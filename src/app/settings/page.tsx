@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import type { LucideIcon } from 'lucide-react';
 import { 
   Settings, Building2, DollarSign, CreditCard, Shield, 
   Loader2, Save, CheckCircle, AlertCircle, Plus, Edit, Trash2,
@@ -21,7 +23,7 @@ interface Setting {
 const CATEGORIES = ['COMPANY', 'PAYROLL', 'STATUTORY', 'SYSTEM'] as const;
 type Category = typeof CATEGORIES[number];
 
-const CATEGORY_ICONS: Record<Category, any> = {
+const CATEGORY_ICONS: Record<Category, LucideIcon> = {
   COMPANY: Building2,
   PAYROLL: DollarSign,
   STATUTORY: Shield,
@@ -67,6 +69,8 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
+    // Initial data load: setLoading fires synchronously inside the fetch helper by design.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSettings();
   }, []);
 
@@ -89,7 +93,7 @@ export default function SettingsPage() {
       if (!data.success) {
         if (data.details) {
           const errors: Record<string, string> = {};
-          data.details.forEach((err: any) => {
+          data.details.forEach((err: { path: (string | number)[]; message: string }) => {
             errors[err.path[0]] = err.message;
           });
           setFormErrors(errors);
@@ -170,7 +174,7 @@ export default function SettingsPage() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <a href="/" className="text-xl font-bold text-primary">WizTech Payroll</a>
+            <Link href="/" className="text-xl font-bold text-primary">WizTech Payroll</Link>
             <span className="text-gray-500">/</span>
             <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
           </div>
@@ -229,7 +233,7 @@ export default function SettingsPage() {
                 })()}
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-1">No settings in this category</h3>
-              <p className="text-gray-500 mb-4">Click "Add Setting" to create your first setting</p>
+              <p className="text-gray-500 mb-4">Click &quot;Add Setting&quot; to create your first setting</p>
               <button onClick={handleNew} className="btn-primary">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Setting

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   Calculator, Loader2, CheckCircle, XCircle, AlertCircle,
   FileText, Download, Upload, RefreshCw, Save, Eye,
@@ -119,11 +120,14 @@ export default function PayrollPage() {
   };
 
   useEffect(() => {
+    // Initial data load: setLoading fires synchronously inside the fetch helper by design.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPeriods();
   }, []);
 
   useEffect(() => {
     if (selectedPeriod) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchEmployees();
       setStatus('idle');
       setError(null);
@@ -164,7 +168,7 @@ export default function PayrollPage() {
     };
   };
 
-  const handleInputChange = (id: string, field: keyof PayrollRow, value: any) => {
+  const handleInputChange = (id: string, field: keyof PayrollRow, value: string | number | boolean) => {
     setPayrollRows(prev => prev.map(row => {
       if (row.id !== id) return row;
       const updated = { ...row, [field]: value };
@@ -294,7 +298,7 @@ export default function PayrollPage() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-full mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <a href="/" className="text-xl font-bold text-primary">WizTech Payroll</a>
+            <Link href="/" className="text-xl font-bold text-primary">WizTech Payroll</Link>
             <span className="text-gray-500">/</span>
             <h1 className="text-2xl font-semibold text-gray-900">Payroll Processing</h1>
           </div>
@@ -396,9 +400,9 @@ export default function PayrollPage() {
                 <h3 className="font-medium text-blue-800">Payroll Workflow</h3>
                 <ol className="text-sm text-blue-700 mt-1 list-decimal list-inside space-y-1">
                   <li>Select payroll period above</li>
-                  <li>Click "Calculate" to compute all earnings, deductions, and net pay</li>
-                  <li>Review calculations and click "Validate" to check for errors</li>
-                  <li>Click "Save Payroll" to persist to database</li>
+                  <li>Click &quot;Calculate&quot; to compute all earnings, deductions, and net pay</li>
+                  <li>Review calculations and click &quot;Validate&quot; to check for errors</li>
+                  <li>Click &quot;Save Payroll&quot; to persist to database</li>
                   <li>Generate payslips and reports from saved data</li>
                 </ol>
                 <p className="text-xs text-blue-600 mt-2">

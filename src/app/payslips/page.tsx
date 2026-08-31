@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   FileText, Search, Filter, Download, Eye, Printer, Loader2,
   ChevronLeft, ChevronRight, Building2, User, Calendar, Banknote,
@@ -95,6 +96,8 @@ export default function PayslipsPage() {
   };
 
   useEffect(() => {
+    // Initial data load: setLoading fires synchronously inside the fetch helper by design.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEmployees();
     fetchPeriods();
   }, []);
@@ -165,7 +168,7 @@ export default function PayslipsPage() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <a href="/" className="text-xl font-bold text-primary">WizTech Payroll</a>
+            <Link href="/" className="text-xl font-bold text-primary">WizTech Payroll</Link>
             <span className="text-gray-500">/</span>
             <h1 className="text-2xl font-semibold text-gray-900">Payslips</h1>
           </div>
@@ -233,7 +236,7 @@ export default function PayslipsPage() {
         <header className="bg-white border-b border-gray-200 sticky top-0 z-10 no-print">
           <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <a href="/" className="text-xl font-bold text-primary">WizTech Payroll</a>
+              <Link href="/" className="text-xl font-bold text-primary">WizTech Payroll</Link>
               <span className="text-gray-500">/</span>
               <h1 className="text-2xl font-semibold text-gray-900">Payslip</h1>
             </div>

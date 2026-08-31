@@ -115,6 +115,8 @@ export default function EmployeesPage() {
   };
 
   useEffect(() => {
+    // Initial data load: setLoading fires synchronously inside the fetch helper by design.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEmployees();
     fetchDepartments();
   }, [pagination.page, search, departmentFilter, statusFilter]);
@@ -139,7 +141,7 @@ export default function EmployeesPage() {
       if (!data.success) {
         if (data.details) {
           const errors: Record<string, string> = {};
-          data.details.forEach((err: any) => {
+          data.details.forEach((err: { path: (string | number)[]; message: string }) => {
             errors[err.path[0]] = err.message;
           });
           setFormErrors(errors);
