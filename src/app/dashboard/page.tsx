@@ -218,8 +218,10 @@ export default function DashboardPage() {
             </div>
           ))}
 
-          {/* Charts Row 1 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        </div>
+
+        {/* Charts Row 1 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Payroll by Department - Bar Chart */}
             <div className="card">
               <div className="flex items-center justify-between mb-4">
@@ -425,7 +427,6 @@ export default function DashboardPage() {
               </table>
             </div>
           </div>
-        </div>
       </main>
     </div>
   );
