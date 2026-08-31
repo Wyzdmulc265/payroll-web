@@ -1,0 +1,128 @@
+// Prisma Schema for WizTech Payroll Web App
+// Run: npx prisma generate && npx prisma db push
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Employee {
+  id                String    @id @default(cuid())
+  employeeId        String    @unique @map("employee_id") // EMP001
+  firstName         String    @map("first_name")
+  lastName          String    @map("last_name")
+  fullName          String?   @map("full_name")
+  nationalId        String?   @unique @map("national_id")
+  employmentStatus  String    @default("Active") @map("employment_status")
+  department        String
+  position          String
+  employmentDate    DateTime  @map("employment_date")
+  employmentType    String    @default("Permanent") @map("employment_type")
+  basicSalary       Decimal   @db.Decimal(15, 2) @map("basic_salary")
+  salaryFrequency   String    @default("Monthly") @map("salary_frequency")
+  allowances        Decimal   @db.Decimal(15, 2) @default(0) @map("allowances")
+  bankName          String?   @map("bank_name")
+  accountNumber     String?   @map("account_number")
+  paymentMethod     String    @default("Bank Transfer") @map("payment_method")
+  pensionApplicable Boolean   @default(true) @map("pension_applicable")
+  taxStatus         String    @default("Taxable") @map("tax_status")
+  taxNumber         String?   @map("tax_number")
+  notes             String?
+  isActive          Boolean   @default(true) @map("is_active")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  payrollRecords    PayrollRecord[]
+  auditLogs         AuditLog[]
+
+  @@map("employees")
+  @@index([department])
+  @@index([employmentStatus])
+  @@index([isActive])
+}
+
+model PayrollRecord {
+  id              String    @id @default(cuid())
+  payrollPeriod   String    @map("payroll_period") // 2026-08
+  periodStart     DateTime  @map("period_start")
+  periodEnd       DateTime  @map("period_end")
+  employeeId      String    @map("employee_id")
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  department      String
+  position        String
+  basicSalary     Decimal   @db.Decimal(15, 2) @map("basic_salary")
+  allowances      Decimal   @db.Decimal(15, 2) @map("allowances")
+  overtimeHours   Decimal?  @db.Decimal(5, 2) @map("overtime_hours")
+  overtimeRate    Decimal?  @db.Decimal(5, 2) @map("overtime_rate")
+  overtimePay     Decimal   @db.Decimal(15, 2) @default(0) @map("overtime_pay")
+  bonuses         Decimal   @db.Decimal(15, 2) @default(0) @map("bonuses")
+  otherEarnings   Decimal   @db.Decimal(15, 2) @default(0) @map("other_earnings")
+  grossEarnings   Decimal   @db.Decimal(15, 2) @map("gross_earnings")
+  paye            Decimal   @db.Decimal(15, 2) @map("paye")
+  pensionEE       Decimal   @db.Decimal(15, 2) @map("pension_ee")
+  pensionER       Decimal   @db.Decimal(15, 2) @map("pension_er")
+  otherDeductions Decimal   @db.Decimal(15, 2) @default(0) @map("other_deductions")
+  totalDeductions Decimal   @db.Decimal(15, 2) @map("total_deductions")
+  netPay          Decimal   @db.Decimal(15, 2) @map("net_pay")
+  employerCost    Decimal   @db.Decimal(15, 2) @map("employer_cost")
+  runDate         DateTime  @default(now()) @map("run_date")
+  runBy           String    @map("run_by")
+  status          String    @default("Saved") @map("status")
+
+  @@map("payroll_records")
+  @@index([payrollPeriod])
+  @@index([employeeId])
+  @@unique([payrollPeriod, employeeId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  user        String
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  description String
+  oldValue    String?  @map("old_value")
+  newValue    String?  @map("new_value")
+  ipAddress   String?  @map("ip_address")
+  employeeId  String?  @map("employee_id")
+  employee    Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+  @@index([entityType, entityId])
+  @@index([timestamp])
+  @@index([employeeId])
+}
+
+model Settings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  effectiveFrom DateTime @map("effective_from")
+  category    String   // COMPANY, PAYROLL, STATUTORY, SYSTEM
+
+  @@map("settings")
+  @@index([category])
+}
+
+// Malawi Statutory Configuration (stored as settings with category=STATUTORY)
+// Key format: statutory.{parameter}
+// Examples:
+// statutory.paye_band_1_from = "0"
+// statutory.paye_band_1_to = "100000"
+// statutory.paye_band_1_rate = "0"
+// statutory.paye_band_2_from = "100001"
+// statutory.paye_band_2_to = "200000"
+// statutory.paye_band_2_rate = "15"
+// ...
+// statutory.pension_ee_rate = "5"
+// statutory.pension_er_rate = "10"
+// statutory.max_pensionable_income = "1000000"
+// statutory.tevet_levy_rate = "1"
+// statutory.fringe_benefit_tax_rate = "30"

@@ -1,0 +1,135 @@
+import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
+import { z } from 'zod';
+
+const employeeSchema = z.object({
+  employeeId: z.string().regex(/^EMP\d{3}$/, 'Employee ID must be in format EMPXXX'),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  nationalId: z.string().optional(),
+  department: z.string().min(1),
+  position: z.string().min(1),
+  employmentDate: z.coerce.date(),
+  employmentType: z.enum(['Permanent', 'Contract']).default('Permanent'),
+  basicSalary: z.number().positive(),
+  salaryFrequency: z.string().default('Monthly'),
+  allowances: z.number().nonnegative().default(0),
+  bankName: z.string().optional(),
+  accountNumber: z.string().optional(),
+  paymentMethod: z.string().default('Bank Transfer'),
+  pensionApplicable: z.boolean().default(true),
+  taxStatus: z.string().default('Taxable'),
+  taxNumber: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const department = searchParams.get('department');
+    const status = searchParams.get('status');
+    const search = searchParams.get('search');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '20');
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.EmployeeWhereInput = {};
+    
+    if (department && department !== 'All') {
+      where.department = department;
+    }
+    
+    if (status && status !== 'All') {
+      where.employmentStatus = status;
+    }
+    
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { employeeId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [employees, total] = await Promise.all([
+      prisma.employee.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.employee.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      data: employees,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching employees:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const validatedData = employeeSchema.parse(body);
+
+    // Check for duplicate employeeId
+    const existing = await prisma.employee.findUnique({
+      where: { employeeId: validatedData.employeeId },
+    });
+
+    if (existing) {
+      return NextResponse.json(
+        { success: false, error: 'Employee ID already exists' },
+        { status: 400 }
+      );
+    }
+
+    const employee = await prisma.employee.create({
+      data: {
+        ...validatedData,
+        fullName: `${validatedData.firstName} ${validatedData.lastName}`,
+        employmentDate: new Date(validatedData.employmentDate),
+      },
+    });
+
+    // Log audit
+    await prisma.auditLog.create({
+      data: {
+        user: 'system', // TODO: get from auth session
+        action: 'CREATE',
+        entityType: 'Employee',
+        entityId: employee.id,
+        description: `Created employee ${employee.employeeId}`,
+        newValue: JSON.stringify(employee),
+      },
+    });
+
+    return NextResponse.json({ success: true, data: employee }, { status: 201 });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: 'Validation error', details: error.errors },
+        { status: 400 }
+      );
+    }
+    console.error('Error creating employee:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
