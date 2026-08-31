@@ -17,7 +17,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased bg-gray-50`}>
+      <body
+        className={`${inter.className} antialiased bg-gray-50`}
+        suppressHydrationWarning={true}
+      >
         <MainNav />
         {/* Offset content from the fixed desktop sidebar; reserve space for
             the mobile bottom nav; collapse both when printing payslips. */}
