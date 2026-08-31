@@ -264,6 +264,7 @@ export default function SettingsPage() {
                                 onClick={() => toggleSensitive(setting.key)}
                                 className="p-1 text-gray-500 hover:text-gray-700 rounded hover:bg-gray-100"
                                 title={visible ? 'Hide value' : 'Show value'}
+                                aria-label={visible ? `Hide ${setting.key} value` : `Show ${setting.key} value`}
                               >
                                 {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                               </button>
@@ -328,12 +329,19 @@ export default function SettingsPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settingModalTitle"
+            aria-label="Setting form"
+            onKeyDown={(e) => { if (e.key === 'Escape') handleCloseModal(); }}
+            className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+          >
             <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 id="settingModalTitle" className="text-xl font-semibold text-gray-900">
                 {editingSetting ? 'Edit Setting' : 'Add Setting'}
               </h2>
-              <button onClick={handleCloseModal} className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100">
+              <button onClick={handleCloseModal} className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100" aria-label="Close">
                 <XCircle className="h-5 w-5" />
               </button>
             </div>
