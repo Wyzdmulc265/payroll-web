@@ -254,7 +254,7 @@ export default function EmployeesPage() {
             <h1 className="text-2xl font-semibold text-gray-900">Employees</h1>
           </div>
           <button onClick={handleNew} className="btn-primary">
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-4 w-4 shrink-0" />
             Add Employee
           </button>
         </div>
