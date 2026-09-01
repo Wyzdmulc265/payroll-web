@@ -34,8 +34,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Prisma
-prisma/migrations/
+# Prisma generated client (Prisma 7 requires explicit output; do not commit)
+prisma/generated/
 
 # IDE
 .idea/

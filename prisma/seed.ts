@@ -1,7 +1,16 @@
-import { PrismaClient } from '@prisma/client';
+import 'dotenv/config';
+import { PrismaClient } from './generated/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { DEFAULT_STATUTORY_CONFIG } from '@/lib/payroll-engine';
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL is not set');
+}
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString }),
+});
 
 async function main() {
   console.log('🌱 Seeding database...');
@@ -24,36 +33,32 @@ async function main() {
     { key: 'company_tpin', value: 'TPIN12345678', description: 'Tax Payer Identification Number', category: 'COMPANY', effectiveFrom: new Date('2024-01-01') },
     { key: 'company_pension_fund', value: 'NICO Pension Fund', description: 'Registered pension fund', category: 'COMPANY', effectiveFrom: new Date('2024-01-01') },
 
-    // Payroll Settings
-    { key: 'payroll_frequency', value: 'Monthly', description: 'Payroll frequency', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
-    { key: 'current_payroll_period', value: '2026-08', description: 'Current payroll period (YYYY-MM)', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
-    { key: 'period_start_day', value: '1', description: 'Day of month period starts', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
-    { key: 'period_end_day', value: '31', description: 'Day of month period ends', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
-    { key: 'working_hours_per_day', value: '8', description: 'Standard working hours', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
-    { key: 'working_days_per_month', value: '22', description: 'Standard working days', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
-    { key: 'overtime_rate_multiplier', value: '1.5', description: 'Overtime pay multiplier', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
-    { key: 'currency', value: 'MWK', description: 'Malawi Kwacha', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
-    { key: 'decimal_places', value: '2', description: 'Rounding precision', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
+// Payroll Settings
+     { key: 'payroll_frequency', value: 'Monthly', description: 'Payroll frequency', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
+     { key: 'current_payroll_period', value: '2026-08', description: 'Current payroll period (YYYY-MM)', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
+     { key: 'period_start_day', value: '1', description: 'Day of month period starts', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
+     { key: 'period_end_day', value: '31', description: 'Day of month period ends', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
+     { key: 'working_hours_per_day', value: '8', description: 'Standard working hours', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
+     { key: 'working_days_per_month', value: '22', description: 'Standard working days', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
+     { key: 'overtime_normal_rate_multiplier', value: '1.5', description: 'Normal day overtime rate multiplier', category: 'PAYROLL', effectiveFrom: new Date('2026-01-01') },
+     { key: 'overtime_public_holiday_rate_multiplier', value: '2.0', description: 'Public holiday overtime rate multiplier', category: 'PAYROLL', effectiveFrom: new Date('2026-01-01') },
+     { key: 'overtime_off_day_rate_multiplier', value: '2.0', description: 'Off-day overtime rate multiplier', category: 'PAYROLL', effectiveFrom: new Date('2026-01-01') },
+     { key: 'currency', value: 'MWK', description: 'Malawi Kwacha', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
+     { key: 'decimal_places', value: '2', description: 'Rounding precision', category: 'PAYROLL', effectiveFrom: new Date('2024-01-01') },
 
-    // Statutory Configuration - PAYE Tax Bands (2024/2025)
-    { key: 'statutory.paye_band_1_from', value: '0', description: 'Band 1 from amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_1_to', value: '100000', description: 'Band 1 to amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_1_rate', value: '0', description: 'Band 1 rate %', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_2_from', value: '100001', description: 'Band 2 from amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_2_to', value: '200000', description: 'Band 2 to amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_2_rate', value: '15', description: 'Band 2 rate %', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_3_from', value: '200001', description: 'Band 3 from amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_3_to', value: '300000', description: 'Band 3 to amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_3_rate', value: '25', description: 'Band 3 rate %', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_4_from', value: '300001', description: 'Band 4 from amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_4_to', value: '400000', description: 'Band 4 to amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_4_rate', value: '30', description: 'Band 4 rate %', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_5_from', value: '400001', description: 'Band 5 from amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_5_to', value: '500000', description: 'Band 5 to amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_5_rate', value: '35', description: 'Band 5 rate %', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_6_from', value: '500001', description: 'Band 6 from amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_6_to', value: '999999999', description: 'Band 6 to amount', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
-    { key: 'statutory.paye_band_6_rate', value: '40', description: 'Band 6 rate %', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },
+    // Statutory Configuration - PAYE Tax Bands (effective 2026-01-01)
+    { key: 'statutory.paye_band_1_from', value: '0', description: 'Band 1 from amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_1_to', value: '170000', description: 'Band 1 to amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_1_rate', value: '0', description: 'Band 1 rate %', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_2_from', value: '170001', description: 'Band 2 from amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_2_to', value: '1570000', description: 'Band 2 to amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_2_rate', value: '30', description: 'Band 2 rate %', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_3_from', value: '1570001', description: 'Band 3 from amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_3_to', value: '10000000', description: 'Band 3 to amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_3_rate', value: '35', description: 'Band 3 rate %', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_4_from', value: '10000001', description: 'Band 4 from amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_4_to', value: '999999999', description: 'Band 4 to amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_4_rate', value: '40', description: 'Band 4 rate %', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
 
     // Pension Configuration
     { key: 'statutory.pension_ee_rate', value: '5', description: 'Employee pension contribution %', category: 'STATUTORY', effectiveFrom: new Date('2024-07-01') },

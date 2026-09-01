@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
-import { formatCurrency } from '@/lib/payroll-engine';
+import prisma, { Prisma } from '@/lib/prisma';
+import { formatCurrency, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +15,11 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Load statutory config from Settings (falls back to defaults).
+    const configSettings = await prisma.settings.findMany();
+    const configMap = Object.fromEntries(configSettings.map((s) => [s.key, s.value]));
+    const config = buildStatutoryConfigFromSettings(configMap);
 
     const where: Prisma.PayrollRecordWhereInput = { payrollPeriod: period };
     if (department && department !== 'All') {
@@ -151,7 +155,7 @@ export async function GET(request: NextRequest) {
         const totalPAYE = records.reduce((sum, r) => sum + Number(r.paye), 0);
         const totalPensionEE = records.reduce((sum, r) => sum + Number(r.pensionEE), 0);
         const totalPensionER = records.reduce((sum, r) => sum + Number(r.pensionER), 0);
-        const totalTEVET = records.reduce((sum, r) => sum + Number(r.grossEarnings) * 0.01, 0);
+        const totalTEVET = records.reduce((sum, r) => sum + Number(r.grossEarnings) * (config.tevetLevyPercent / 100), 0);
 
         headers = ['Period', 'Total Gross', 'Total PAYE', 'Total Pension EE', 'Total Pension ER', 'Total TEVET Levy', 'Total Employer Statutory Cost'];
         reportData = [[

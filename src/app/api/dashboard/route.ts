@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { formatCurrency } from '@/lib/payroll-engine';
+import { formatCurrency, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,6 +19,11 @@ export async function GET(request: NextRequest) {
         data: { periods: periods.map(p => p.payrollPeriod) },
       });
     }
+
+    // Load statutory config from Settings (falls back to defaults).
+    const configSettings = await prisma.settings.findMany();
+    const configMap = Object.fromEntries(configSettings.map((s) => [s.key, s.value]));
+    const config = buildStatutoryConfigFromSettings(configMap);
 
     // Get all payroll records for the period
     const records = await prisma.payrollRecord.findMany({
@@ -40,14 +45,35 @@ export async function GET(request: NextRequest) {
     const byDepartment = records.reduce((acc, r) => {
       const dept = r.employee.department;
       if (!acc[dept]) {
-        acc[dept] = { department: dept, employees: 0, gross: 0, net: 0, paye: 0 };
+        acc[dept] = {
+          department: dept,
+          employees: 0,
+          gross: 0,
+          net: 0,
+          paye: 0,
+          pensionEE: 0,
+          pensionER: 0,
+          employerCost: 0,
+        };
       }
       acc[dept].employees += 1;
       acc[dept].gross += Number(r.grossEarnings);
       acc[dept].net += Number(r.netPay);
       acc[dept].paye += Number(r.paye);
+      acc[dept].pensionEE += Number(r.pensionEE);
+      acc[dept].pensionER += Number(r.pensionER);
+      acc[dept].employerCost += Number(r.employerCost);
       return acc;
-    }, {} as Record<string, { department: string; employees: number; gross: number; net: number; paye: number }>);
+    }, {} as Record<string, {
+      department: string;
+      employees: number;
+      gross: number;
+      net: number;
+      paye: number;
+      pensionEE: number;
+      pensionER: number;
+      employerCost: number;
+    }>);
 
     // Monthly trend (last 12 months)
     const monthlyTrend = await prisma.payrollRecord.groupBy({
@@ -75,6 +101,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         period,
+        currency: config.currency,
         kpis: {
           activeEmployees,
           grossPayroll: totalGross,
@@ -85,13 +112,13 @@ export async function GET(request: NextRequest) {
           pensionER: totalPensionER,
           employerCost: totalEmployerCost,
           formatted: {
-            grossPayroll: formatCurrency(totalGross),
-            totalDeductions: formatCurrency(totalDeductions),
-            netPayroll: formatCurrency(totalNetPay),
-            paye: formatCurrency(totalPAYE),
-            pensionEE: formatCurrency(totalPensionEE),
-            pensionER: formatCurrency(totalPensionER),
-            employerCost: formatCurrency(totalEmployerCost),
+            grossPayroll: formatCurrency(totalGross, config.currency, config.decimalPlaces),
+            totalDeductions: formatCurrency(totalDeductions, config.currency, config.decimalPlaces),
+            netPayroll: formatCurrency(totalNetPay, config.currency, config.decimalPlaces),
+            paye: formatCurrency(totalPAYE, config.currency, config.decimalPlaces),
+            pensionEE: formatCurrency(totalPensionEE, config.currency, config.decimalPlaces),
+            pensionER: formatCurrency(totalPensionER, config.currency, config.decimalPlaces),
+            employerCost: formatCurrency(totalEmployerCost, config.currency, config.decimalPlaces),
           },
         },
         charts: {
@@ -101,6 +128,9 @@ export async function GET(request: NextRequest) {
             gross: d.gross,
             net: d.net,
             paye: d.paye,
+            pensionEE: d.pensionEE,
+            pensionER: d.pensionER,
+            employerCost: d.employerCost,
           })),
           monthlyTrend: monthlyTrend.slice().reverse().map(m => ({
             period: m.payrollPeriod,

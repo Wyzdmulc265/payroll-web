@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { formatCurrency, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
+import { formatCurrency } from '@/lib/payroll-engine';
 
 export async function GET(
   request: NextRequest,
@@ -41,14 +41,6 @@ export async function GET(
       where: { category: 'COMPANY' },
     });
     const settingsMap = Object.fromEntries(settings.map(s => [s.key, s.value]));
-
-    // Build statutory/payroll config from Settings (falls back to defaults).
-    const statSettings = await prisma.settings.findMany({
-      where: { category: { in: ['STATUTORY', 'PAYROLL'] } },
-    });
-    const config = buildStatutoryConfigFromSettings(
-      Object.fromEntries(statSettings.map((s) => [s.key, s.value]))
-    );
 
     const employee = payrollRecord.employee;
 
@@ -97,7 +89,7 @@ export async function GET(
 
       // Employer Contributions
       pensionER: Number(payrollRecord.pensionER),
-      tevetLevy: Number(payrollRecord.grossEarnings) * (config.tevetLevyPercent / 100),
+      tevetLevy: Number(payrollRecord.tevetLevy),
       employerCost: Number(payrollRecord.employerCost),
 
       // Formatted values
@@ -114,7 +106,7 @@ export async function GET(
         totalDeductions: formatCurrency(Number(payrollRecord.totalDeductions)),
         netPay: formatCurrency(Number(payrollRecord.netPay)),
         pensionER: formatCurrency(Number(payrollRecord.pensionER)),
-        tevetLevy: formatCurrency(Number(payrollRecord.grossEarnings) * (config.tevetLevyPercent / 100)),
+        tevetLevy: formatCurrency(Number(payrollRecord.tevetLevy)),
         employerCost: formatCurrency(Number(payrollRecord.employerCost)),
       },
     };

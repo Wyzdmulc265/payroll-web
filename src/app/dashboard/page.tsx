@@ -16,6 +16,7 @@ import { formatCurrency } from '@/lib/payroll-engine';
 
 interface DashboardData {
   period: string;
+  currency: string;
   kpis: {
     activeEmployees: number;
     grossPayroll: number;
@@ -42,6 +43,9 @@ interface DashboardData {
       gross: number;
       net: number;
       paye: number;
+      pensionEE: number;
+      pensionER: number;
+      employerCost: number;
     }>;
     monthlyTrend: Array<{
       period: string;
@@ -197,7 +201,7 @@ export default function DashboardPage() {
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>
-            <button onClick={fetchDashboard} disabled={loading} className="btn-secondary">
+            <button onClick={fetchDashboard} disabled={loading} aria-label="Refresh dashboard" title="Refresh" className="btn-secondary">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
@@ -412,9 +416,9 @@ export default function DashboardPage() {
                       <td className="text-right font-mono">{formatCurrency(dept.gross)}</td>
                       <td className="text-right font-mono">{formatCurrency(dept.net)}</td>
                       <td className="text-right font-mono text-red-600">{formatCurrency(dept.paye)}</td>
-                      <td className="text-right font-mono">{formatCurrency(dashboardData?.kpis.pensionEE * (dept.gross / (dashboardData?.kpis.grossPayroll || 1)) || 0)}</td>
-                      <td className="text-right font-mono">{formatCurrency(dashboardData?.kpis.pensionER * (dept.gross / (dashboardData?.kpis.grossPayroll || 1)) || 0)}</td>
-                      <td className="text-right font-mono text-blue-600">{formatCurrency(dashboardData?.kpis.employerCost * (dept.gross / (dashboardData?.kpis.grossPayroll || 1)) || 0)}</td>
+                      <td className="text-right font-mono">{formatCurrency(dept.pensionEE)}</td>
+                      <td className="text-right font-mono">{formatCurrency(dept.pensionER)}</td>
+                      <td className="text-right font-mono text-blue-600">{formatCurrency(dept.employerCost)}</td>
                     </tr>
                   ))}
                   <tr className="bg-gray-50 font-semibold">

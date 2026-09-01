@@ -20,7 +20,12 @@
 }
 
 @layer components {
-  .btn {
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-success,
+  .btn-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -30,7 +35,7 @@
     font-weight: 500;
     line-height: 1.25rem;
     white-space: nowrap;
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
     border: 1px solid transparent;
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.06);
     transition-property: color, background-color, border-color, box-shadow, text-decoration-color, fill, stroke;
@@ -40,14 +45,28 @@
     cursor: pointer;
     user-select: none;
   }
-  .btn:focus-visible {
+  .btn:focus-visible,
+  .btn-primary:focus-visible,
+  .btn-secondary:focus-visible,
+  .btn-danger:focus-visible,
+  .btn-success:focus-visible,
+  .btn-icon:focus-visible {
     outline: 2px solid var(--btn-ring, currentColor);
     outline-offset: 2px;
   }
-  .btn:active:not(:disabled) {
+  .btn:active:not(:disabled),
+  .btn-primary:active:not(:disabled),
+  .btn-secondary:active:not(:disabled),
+  .btn-danger:active:not(:disabled),
+  .btn-success:active:not(:disabled),
+  .btn-icon:active:not(:disabled) {
     transform: translateY(1px);
   }
-  .btn:disabled {
+  .btn:disabled,
+  .btn-primary:disabled,
+  .btn-secondary:disabled,
+  .btn-danger:disabled,
+  .btn-success:disabled {
     opacity: 0.55;
     cursor: not-allowed;
   }
@@ -90,6 +109,35 @@
   .btn-success:hover {
     background-color: #047857;
     border-color: #047857;
+  }
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border-radius: 0.75rem;
+    color: #6b7280;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    transition-property: color, background-color;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+    cursor: pointer;
+    user-select: none;
+  }
+  .btn-icon:focus-visible {
+    outline: 2px solid #94a3b8;
+    outline-offset: 2px;
+  }
+  .btn-icon:hover:not(:disabled) {
+    background-color: #f3f4f6;
+  }
+  .btn-icon:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .input {
     width: 100%;

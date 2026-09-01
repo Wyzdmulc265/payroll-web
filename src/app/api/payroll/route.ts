@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
-import { calculatePayroll, PayrollInput, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
+import prisma, { Prisma } from '@/lib/prisma';
+import { calculatePayroll, PayrollInput, buildStatutoryConfigFromSettings, selectEffectiveSettings, getWorkingDaysInMonth } from '@/lib/payroll-engine';
 import { z } from 'zod';
 
 const runPayrollSchema = z.object({
-  payrollPeriod: z.string().regex(/^\d{4}-\d{2}$/, 'Period must be YYYY-MM'),
-  employeeIds: z.array(z.string()).optional(), // If not provided, process all active employees
-  overtimeData: z.array(z.object({
-    employeeId: z.string(),
-    overtimeHours: z.number().nonnegative(),
-    overtimeRate: z.number().positive(),
-    bonuses: z.number().nonnegative().default(0),
-    otherEarnings: z.number().nonnegative().default(0),
-    otherDeductions: z.number().nonnegative().default(0),
-  })).optional(),
-});
+   payrollPeriod: z.string().regex(/^\d{4}-\d{2}$/, 'Period must be YYYY-MM'),
+   employeeIds: z.array(z.string()).optional(), // If not provided, process all active employees
+   overtimeData: z.array(z.object({
+     employeeId: z.string(),
+     normalOvertimeHours: z.number().nonnegative().default(0),
+     publicHolidayOvertimeHours: z.number().nonnegative().default(0),
+     offDayOvertimeHours: z.number().nonnegative().default(0),
+     bonuses: z.number().nonnegative().default(0),
+     otherEarnings: z.number().nonnegative().default(0),
+     otherDeductions: z.number().nonnegative().default(0),
+   })).optional(),
+ });
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,15 +23,19 @@ export async function POST(request: NextRequest) {
     const validatedData = runPayrollSchema.parse(body);
 
     const { payrollPeriod, employeeIds, overtimeData } = validatedData;
-// Load statutory + payroll config from Settings (falls back to defaults)
-    const configSettings = await prisma.settings.findMany();
-    const configMap = Object.fromEntries(configSettings.map((s) => [s.key, s.value]));
-    const config = buildStatutoryConfigFromSettings(configMap);
-
-    // Get period start/end dates
+// Load statutory + payroll config from Settings as of the END of the selected
+    // period (falls back to defaults). This makes historical runs use the rates
+    // that were effective during that period, not whatever is current today.
     const [year, month] = payrollPeriod.split('-').map(Number);
     const periodStart = new Date(year, month - 1, 1);
     const periodEnd = new Date(year, month, 0); // Last day of month
+
+    const configSettings = await prisma.settings.findMany();
+    const configMap = selectEffectiveSettings(
+      configSettings.map((s) => ({ key: s.key, value: s.value, effectiveFrom: s.effectiveFrom })),
+      periodEnd
+    );
+    const config = buildStatutoryConfigFromSettings(configMap);
 
     // Get employees to process
     const employees = await prisma.employee.findMany({
@@ -44,6 +48,21 @@ export async function POST(request: NextRequest) {
     if (employees.length === 0) {
       return NextResponse.json(
         { success: false, error: 'No active employees found' },
+        { status: 400 }
+      );
+    }
+
+    // The engine assumes monthly salaries (monthly PAYE bands, monthly pension
+    // cap). Reject the run if any targeted employee uses another frequency
+    // instead of silently mis-calculating.
+    const nonMonthly = employees.filter((e) => e.salaryFrequency !== 'Monthly');
+    if (nonMonthly.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Engine only supports Monthly salaries; ${nonMonthly.length} employee(s) use other frequencies`,
+          employees: nonMonthly.map((e) => ({ employeeId: e.employeeId, salaryFrequency: e.salaryFrequency })),
+        },
         { status: 400 }
       );
     }
@@ -68,67 +87,86 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Process each employee
-    const payrollRecords = [];
-    
-    for (const emp of employees) {
-      const ot = overtimeMap.get(emp.id) || {};
-      
-      const input: PayrollInput = {
-        basicSalary: Number(emp.basicSalary),
-        allowances: Number(emp.allowances),
-        overtimeHours: ot.overtimeHours || 0,
-        overtimeRate: ot.overtimeRate || config.overtimeRateMultiplier,
-        bonuses: ot.bonuses || 0,
-        otherEarnings: ot.otherEarnings || 0,
-        otherDeductions: ot.otherDeductions || 0,
-      };
+// Process each employee
+     const payrollRecords = [];
+     
+     for (const emp of employees) {
+       const ot = overtimeMap.get(emp.id) || {};
+       
+       const input: PayrollInput = {
+         basicSalary: Number(emp.basicSalary),
+         allowances: Number(emp.allowances),
+         normalOvertimeHours: ot.normalOvertimeHours || 0,
+         publicHolidayOvertimeHours: ot.publicHolidayOvertimeHours || 0,
+         offDayOvertimeHours: ot.offDayOvertimeHours || 0,
+         bonuses: ot.bonuses || 0,
+         otherEarnings: ot.otherEarnings || 0,
+         otherDeductions: ot.otherDeductions || 0,
+       };
 
-      const result = calculatePayroll(input, config);
+        const result = calculatePayroll({
+          ...input,
+          // Period-aware overtime: use the actual Mon–Fri day count of this
+          // calendar month rather than the fixed configured constant.
+          workingDaysInPeriod: getWorkingDaysInMonth(year, month),
+        }, config);
 
-      payrollRecords.push({
-        payrollPeriod,
-        periodStart,
-        periodEnd,
-        employeeId: emp.id,
-        department: emp.department,
-        position: emp.position,
-        basicSalary: result.basicSalary,
-        allowances: result.allowances,
-        overtimeHours: result.overtimeHours,
-        overtimeRate: result.overtimeRate,
-        overtimePay: result.overtimePay,
-        bonuses: result.bonuses,
-        otherEarnings: result.otherEarnings,
-        grossEarnings: result.grossEarnings,
-        paye: result.paye,
-        pensionEE: result.pensionEE,
-        pensionER: result.pensionER,
-        otherDeductions: result.otherDeductions,
-        totalDeductions: result.totalDeductions,
-        netPay: result.netPay,
-        employerCost: result.employerCost,
-        runBy: 'system', // TODO: get from auth session
-        status: 'Saved',
-      });
-    }
+       payrollRecords.push({
+         payrollPeriod,
+         periodStart,
+         periodEnd,
+         employeeId: emp.id,
+         department: emp.department,
+         position: emp.position,
+         basicSalary: result.basicSalary,
+         allowances: result.allowances,
+         normalOvertimeHours: result.normalOvertimeHours,
+         publicHolidayOvertimeHours: result.publicHolidayOvertimeHours,
+         offDayOvertimeHours: result.offDayOvertimeHours,
+         overtimePay: result.overtimePay,
+         bonuses: result.bonuses,
+         otherEarnings: result.otherEarnings,
+         grossEarnings: result.grossEarnings,
+         paye: result.paye,
+         pensionEE: result.pensionEE,
+         pensionER: result.pensionER,
+         tevetLevy: result.tevetLevy,
+         otherDeductions: result.otherDeductions,
+         totalDeductions: result.totalDeductions,
+         netPay: result.netPay,
+         employerCost: result.employerCost,
+         runBy: 'system', // TODO: get from auth session
+         status: 'Saved',
+         // Snapshot the exact statutory config used, so historical payslips
+         // remain reproducible/auditable after settings change.
+         configSnapshot: {
+           taxBands: config.taxBands,
+           pensionEEPercent: config.pensionEEPercent,
+           pensionERPercent: config.pensionERPercent,
+           maxPensionableIncome: config.maxPensionableIncome,
+           tevetLevyPercent: config.tevetLevyPercent,
+           workingDaysInPeriod: getWorkingDaysInMonth(year, month),
+           currency: config.currency,
+         },
+       });
+     }
 
-    // Bulk create payroll records
-    await prisma.payrollRecord.createMany({
-      data: payrollRecords,
-    });
-
-    // Log audit
-    await prisma.auditLog.create({
-      data: {
-        user: 'system',
-        action: 'PAYROLL_RUN',
-        entityType: 'Payroll',
-        entityId: payrollPeriod,
-        description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
-        newValue: JSON.stringify({ period: payrollPeriod, count: employees.length }),
-      },
-    });
+    // Bulk create payroll records + audit log atomically.
+    await prisma.$transaction([
+      prisma.payrollRecord.createMany({
+        data: payrollRecords,
+      }),
+      prisma.auditLog.create({
+        data: {
+          user: 'system',
+          action: 'PAYROLL_RUN',
+          entityType: 'Payroll',
+          entityId: payrollPeriod,
+          description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
+          newValue: JSON.stringify({ period: payrollPeriod, count: employees.length }),
+        },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,

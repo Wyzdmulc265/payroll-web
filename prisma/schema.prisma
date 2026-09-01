@@ -1,13 +1,19 @@
 // Prisma Schema for WizTech Payroll Web App
-// Run: npx prisma generate && npx prisma db push
+// Run: npx prisma generate && npx prisma migrate dev
 
+// Prisma 7 requires an explicit output path for the generated client.
+// Keep this generator block intact — `output = "./generated"` is required
+// by v7 and the v6 default of `node_modules/@prisma/client` no longer exists.
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "./generated"
 }
 
+// Prisma 7 moved the connection URL out of the schema into prisma.config.ts.
+// The datasource here only declares the database provider; the URL lives in
+// the config file at the project root.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Employee {
@@ -56,8 +62,6 @@ model PayrollRecord {
   position        String
   basicSalary     Decimal   @db.Decimal(15, 2) @map("basic_salary")
   allowances      Decimal   @db.Decimal(15, 2) @map("allowances")
-  overtimeHours   Decimal?  @db.Decimal(5, 2) @map("overtime_hours")
-  overtimeRate    Decimal?  @db.Decimal(5, 2) @map("overtime_rate")
   overtimePay     Decimal   @db.Decimal(15, 2) @default(0) @map("overtime_pay")
   bonuses         Decimal   @db.Decimal(15, 2) @default(0) @map("bonuses")
   otherEarnings   Decimal   @db.Decimal(15, 2) @default(0) @map("other_earnings")
@@ -65,10 +69,12 @@ model PayrollRecord {
   paye            Decimal   @db.Decimal(15, 2) @map("paye")
   pensionEE       Decimal   @db.Decimal(15, 2) @map("pension_ee")
   pensionER       Decimal   @db.Decimal(15, 2) @map("pension_er")
+  tevetLevy       Decimal   @db.Decimal(15, 2) @default(0) @map("tevet_levy")
   otherDeductions Decimal   @db.Decimal(15, 2) @default(0) @map("other_deductions")
   totalDeductions Decimal   @db.Decimal(15, 2) @map("total_deductions")
   netPay          Decimal   @db.Decimal(15, 2) @map("net_pay")
   employerCost    Decimal   @db.Decimal(15, 2) @map("employer_cost")
+  configSnapshot  Json?     @map("config_snapshot") // statutory config used for this run (audit)
   runDate         DateTime  @default(now()) @map("run_date")
   runBy           String    @map("run_by")
   status          String    @default("Saved") @map("status")

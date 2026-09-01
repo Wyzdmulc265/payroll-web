@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   Calculator, Loader2, CheckCircle, XCircle, AlertCircle,
   FileText, Download, Upload, RefreshCw, Save, Eye,
   ChevronLeft, ChevronRight, Plus, Minus, Search, Filter
 } from 'lucide-react';
-import { calculatePayroll, formatCurrency, PayrollInput, DEFAULT_STATUTORY_CONFIG } from '@/lib/payroll-engine';
+import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings } from '@/lib/payroll-engine';
 
 interface Employee {
   id: string;
@@ -27,8 +27,9 @@ interface PayrollRow {
   department: string;
   basicSalary: number;
   allowances: number;
-  overtimeHours: number;
-  overtimeRate: number;
+  normalOvertimeHours: number;
+  publicHolidayOvertimeHours: number;
+   offDayOvertimeHours: number;
   overtimePay: number;
   bonuses: number;
   otherEarnings: number;
@@ -36,6 +37,7 @@ interface PayrollRow {
   paye: number;
   pensionEE: number;
   pensionER: number;
+   tevetLevy: number;
   otherDeductions: number;
   totalDeductions: number;
   netPay: number;
@@ -56,13 +58,17 @@ export default function PayrollPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrollRows, setPayrollRows] = useState<PayrollRow[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('2026-08');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loaded' | 'calculated' | 'validated' | 'saved' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [config, setConfig] = useState<StatutoryConfig | null>(null);
+
+  const currentYear = new Date().getFullYear();
+  const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 
   const fetchEmployees = async () => {
     try {
@@ -71,30 +77,33 @@ export default function PayrollPage() {
       if (data.success) {
         const activeEmployees = (data.data as Employee[]).filter((e) => e.isActive);
         setEmployees(activeEmployees);
-        // Initialize payroll rows
-        const rows: PayrollRow[] = activeEmployees.map((emp) => ({
-          id: emp.id,
-          employeeId: emp.employeeId,
-          employeeName: emp.fullName,
-          department: emp.department,
-          basicSalary: emp.basicSalary,
-          allowances: emp.allowances,
-          overtimeHours: 0,
-          overtimeRate: DEFAULT_STATUTORY_CONFIG.overtimeRateMultiplier,
-          overtimePay: 0,
-          bonuses: 0,
-          otherEarnings: 0,
-          grossEarnings: 0,
-          paye: 0,
-          pensionEE: 0,
-          pensionER: 0,
-          otherDeductions: 0,
-          totalDeductions: 0,
-          netPay: 0,
-          employerCost: 0,
-          isValid: true,
-          errors: [],
-        }));
+// Initialize payroll rows
+         const rows: PayrollRow[] = activeEmployees.map((emp) => ({
+           id: emp.id,
+           employeeId: emp.employeeId,
+           employeeName: emp.fullName,
+           department: emp.department,
+           position: emp.position,
+           basicSalary: emp.basicSalary,
+           allowances: emp.allowances,
+           normalOvertimeHours: 0,
+           publicHolidayOvertimeHours: 0,
+           offDayOvertimeHours: 0,
+           overtimePay: 0,
+           bonuses: 0,
+           otherEarnings: 0,
+           grossEarnings: 0,
+           paye: 0,
+           pensionEE: 0,
+           pensionER: 0,
+           tevetLevy: 0,
+           otherDeductions: 0,
+           totalDeductions: 0,
+           netPay: 0,
+           employerCost: 0,
+           isValid: true,
+           errors: [],
+         }));
         setPayrollRows(rows);
         setStatus('loaded');
       }
@@ -109,13 +118,34 @@ export default function PayrollPage() {
       const res = await fetch('/api/dashboard');
       const data = await res.json();
       if (data.success && data.data.periods) {
-        setPeriods(data.data.periods);
-        if (data.data.periods.length > 0) {
-          setSelectedPeriod(data.data.periods[0]);
-        }
+        const existing: string[] = data.data.periods;
+        setPeriods(existing);
+        setSelectedPeriod(prev => prev || existing[0] || suggestedPeriod);
       }
     } catch (error) {
       console.error('Failed to fetch periods:', error);
+    }
+  };
+
+  const fetchConfig = async (period?: string) => {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      if (data.success) {
+        // Pick only settings effective by the end of the selected period, so a
+        // historical period uses the rates in force at that time.
+        const [py, pm] = (period || selectedPeriod || suggestedPeriod).split('-').map(Number);
+        const asOf = Number.isFinite(py) && Number.isFinite(pm)
+          ? new Date(py, pm, 0)
+          : new Date();
+        const effective = selectEffectiveSettings(
+          (data.data as { key: string; value: string; effectiveFrom?: string }[]),
+          asOf
+        );
+        setConfig(buildStatutoryConfigFromSettings(effective));
+      }
+    } catch (error) {
+      console.error('Failed to fetch config:', error);
     }
   };
 
@@ -123,6 +153,7 @@ export default function PayrollPage() {
     // Initial data load: setLoading fires synchronously inside the fetch helper by design.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPeriods();
+    fetchConfig();
   }, []);
 
   useEffect(() => {
@@ -135,47 +166,65 @@ export default function PayrollPage() {
     }
   }, [selectedPeriod]);
 
-  const calculateOvertimePay = (row: PayrollRow) => {
-    if (row.overtimeHours <= 0) return 0;
-    const hourlyRate = row.basicSalary / DEFAULT_STATUTORY_CONFIG.workingDaysPerMonth / DEFAULT_STATUTORY_CONFIG.workingHoursPerDay;
-    return Math.round(row.overtimeHours * row.overtimeRate * hourlyRate);
-  };
+const calculateOvertimePay = (row: PayrollRow) => {
+     const cfg = config!;
+     if (row.normalOvertimeHours <= 0 && row.publicHolidayOvertimeHours <= 0 && row.offDayOvertimeHours <= 0) return 0;
+     // Period-aware: use the actual Mon–Fri day count of the selected month
+     // instead of the fixed configured constant.
+     const [py, pm] = selectedPeriod.split('-').map(Number);
+     const days = Number.isFinite(py) && Number.isFinite(pm)
+       ? getWorkingDaysInMonth(py, pm)
+       : cfg.workingDaysPerMonth;
+     const hourlyRate = row.basicSalary / days / cfg.workingHoursPerDay;
 
-  const recalculateRow = (row: PayrollRow): PayrollRow => {
-    const overtimePay = calculateOvertimePay(row);
-    const input: PayrollInput = {
-      basicSalary: row.basicSalary,
-      allowances: row.allowances,
-      overtimeHours: row.overtimeHours,
-      overtimeRate: row.overtimeRate,
-      bonuses: row.bonuses,
-      otherEarnings: row.otherEarnings,
-      otherDeductions: row.otherDeductions,
-    };
-    const result = calculatePayroll(input, DEFAULT_STATUTORY_CONFIG);
-    
-    // Validate
-    const errors: string[] = [];
-    if (result.netPay < 0) errors.push('Negative net pay');
-    if (result.paye < 0) errors.push('Invalid PAYE');
-    if (result.pensionEE < 0 || result.pensionER < 0) errors.push('Invalid pension');
-    
-    return {
-      ...row,
-      ...result,
-      isValid: errors.length === 0,
-      errors,
-    };
-  };
+     const normalPay = row.normalOvertimeHours * cfg.overtimeNormalRateMultiplier * hourlyRate;
+     const holidayPay = row.publicHolidayOvertimeHours * cfg.overtimePublicHolidayRateMultiplier * hourlyRate;
+     const offDayPay = row.offDayOvertimeHours * cfg.overtimeOffDayRateMultiplier * hourlyRate;
+
+     return Math.round(normalPay + holidayPay + offDayPay);
+   };
+
+const recalculateRow = (row: PayrollRow): PayrollRow => {
+     const overtimePay = calculateOvertimePay(row);
+     const [year, month] = selectedPeriod.split('-').map(Number);
+     const input: PayrollInput = {
+       basicSalary: row.basicSalary,
+       allowances: row.allowances,
+       normalOvertimeHours: row.normalOvertimeHours,
+       publicHolidayOvertimeHours: row.publicHolidayOvertimeHours,
+       offDayOvertimeHours: row.offDayOvertimeHours,
+       bonuses: row.bonuses,
+       otherEarnings: row.otherEarnings,
+       otherDeductions: row.otherDeductions,
+       // Period-aware overtime: actual Mon–Fri days of the selected month.
+       workingDaysInPeriod: Number.isFinite(year) && Number.isFinite(month)
+         ? getWorkingDaysInMonth(year, month)
+         : undefined,
+     };
+     const result = calculatePayroll(input, config!);
+     
+     // Validate
+     const errors: string[] = [];
+     if (result.netPay < 0) errors.push('Negative net pay');
+     if (result.paye < 0) errors.push('Invalid PAYE');
+     if (result.pensionEE < 0 || result.pensionER < 0) errors.push('Invalid pension');
+     
+     return {
+       ...row,
+       ...result,
+       isValid: errors.length === 0,
+       errors,
+     };
+   };
 
   const handleInputChange = (id: string, field: keyof PayrollRow, value: string | number | boolean) => {
     setPayrollRows(prev => prev.map(row => {
       if (row.id !== id) return row;
       const updated = { ...row, [field]: value };
-      // Recalculate dependent fields
-      if (['overtimeHours', 'overtimeRate', 'basicSalary', 'allowances', 'bonuses', 'otherEarnings', 'otherDeductions'].includes(field)) {
-        return recalculateRow(updated);
-      }
+// Recalculate dependent fields
+       if (['normalOvertimeHours', 'publicHolidayOvertimeHours', 'offDayOvertimeHours', 'basicSalary', 'allowances', 'bonuses', 'otherEarnings', 'otherDeductions'].includes(field)) {
+         return recalculateRow(updated);
+       }
       return updated;
     }));
   };
@@ -183,18 +232,17 @@ export default function PayrollPage() {
   const handleCalculate = async () => {
     setCalculating(true);
     setError(null);
-    
-    // Recalculate all rows
-    setPayrollRows(prev => prev.map(recalculateRow));
-    
-    // Validate all
-    const allValid = payrollRows.every(r => r.isValid);
+
+    const recalculated = payrollRows.map(recalculateRow);
+    setPayrollRows(recalculated);
+
+    const allValid = recalculated.every(r => r.isValid);
     setStatus(allValid ? 'calculated' : 'error');
-    
+
     if (!allValid) {
       setError('Some rows have validation errors. Please review.');
     }
-    
+
     setCalculating(false);
   };
 
@@ -223,74 +271,76 @@ export default function PayrollPage() {
     setLoading(false);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    
-    try {
-      const overtimeData = payrollRows
-        .filter(r => r.overtimeHours > 0 || r.bonuses > 0 || r.otherEarnings > 0 || r.otherDeductions > 0)
-        .map(r => ({
-          employeeId: r.id,
-          overtimeHours: r.overtimeHours,
-          overtimeRate: r.overtimeRate,
-          bonuses: r.bonuses,
-          otherEarnings: r.otherEarnings,
-          otherDeductions: r.otherDeductions,
-        }));
-
-      const res = await fetch('/api/payroll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          payrollPeriod: selectedPeriod,
-          overtimeData,
-        }),
-      });
-      
-      const data = await res.json();
-      
-      if (data.success) {
-        setStatus('saved');
-        setSuccessMessage(`Payroll saved for ${data.data.processedCount} employees!`);
-      } else {
-        setStatus('error');
-        setError(data.error || 'Failed to save payroll');
-      }
-    } catch (error) {
-      console.error('Error saving payroll:', error);
-      setStatus('error');
-      setError('Network error while saving');
-    } finally {
-      setSaving(false);
-    }
-  };
+const handleSave = async () => {
+     setSaving(true);
+     setError(null);
+     
+     try {
+       const overtimeData = payrollRows
+         .filter(r => r.normalOvertimeHours > 0 || r.publicHolidayOvertimeHours > 0 || r.offDayOvertimeHours > 0 || r.bonuses > 0 || r.otherEarnings > 0 || r.otherDeductions > 0)
+         .map(r => ({
+           employeeId: r.id,
+           normalOvertimeHours: r.normalOvertimeHours,
+           publicHolidayOvertimeHours: r.publicHolidayOvertimeHours,
+           offDayOvertimeHours: r.offDayOvertimeHours,
+           bonuses: r.bonuses,
+           otherEarnings: r.otherEarnings,
+           otherDeductions: r.otherDeductions,
+         }));
+ 
+       const res = await fetch('/api/payroll', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+           payrollPeriod: selectedPeriod,
+           overtimeData,
+         }),
+       });
+ 
+       const data = await res.json();
+ 
+       if (data.success) {
+         setStatus('saved');
+         setSuccessMessage(`Payroll saved for ${data.data.processedCount} employees!`);
+       } else {
+         setStatus('error');
+         setError(data.error || 'Failed to save payroll');
+       }
+     } catch (error) {
+       console.error('Error saving payroll:', error);
+       setStatus('error');
+       setError('Network error while saving');
+     } finally {
+       setSaving(false);
+     }
+   };
 
   const handleGeneratePayslips = async () => {
     // TODO: Implement batch payslip generation
     alert('Payslip generation would redirect to Payslips page');
   };
 
-  const totals = payrollRows.reduce((acc, row) => {
-    acc.basicSalary += row.basicSalary;
-    acc.allowances += row.allowances;
-    acc.overtimePay += row.overtimePay;
-    acc.bonuses += row.bonuses;
-    acc.otherEarnings += row.otherEarnings;
-    acc.grossEarnings += row.grossEarnings;
-    acc.paye += row.paye;
-    acc.pensionEE += row.pensionEE;
-    acc.pensionER += row.pensionER;
-    acc.otherDeductions += row.otherDeductions;
-    acc.totalDeductions += row.totalDeductions;
-    acc.netPay += row.netPay;
-    acc.employerCost += row.employerCost;
-    return acc;
-  }, {
-    basicSalary: 0, allowances: 0, overtimePay: 0, bonuses: 0, otherEarnings: 0,
-    grossEarnings: 0, paye: 0, pensionEE: 0, pensionER: 0, otherDeductions: 0,
-    totalDeductions: 0, netPay: 0, employerCost: 0,
-  });
+const totals = useMemo(() => payrollRows.reduce((acc, row) => {
+     acc.basicSalary += row.basicSalary;
+     acc.allowances += row.allowances;
+     acc.overtimePay += row.overtimePay;
+     acc.bonuses += row.bonuses;
+     acc.otherEarnings += row.otherEarnings;
+     acc.grossEarnings += row.grossEarnings;
+     acc.paye += row.paye;
+     acc.pensionEE += row.pensionEE;
+     acc.pensionER += row.pensionER;
+     acc.tevetLevy += row.tevetLevy;
+     acc.otherDeductions += row.otherDeductions;
+     acc.totalDeductions += row.totalDeductions;
+     acc.netPay += row.netPay;
+     acc.employerCost += row.employerCost;
+     return acc;
+   }, {
+     basicSalary: 0, allowances: 0, overtimePay: 0, bonuses: 0, otherEarnings: 0,
+     grossEarnings: 0, paye: 0, pensionEE: 0, pensionER: 0, tevetLevy: 0, otherDeductions: 0,
+     totalDeductions: 0, netPay: 0, employerCost: 0,
+   }), [payrollRows]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -303,17 +353,36 @@ export default function PayrollPage() {
             <h1 className="text-2xl font-semibold text-gray-900">Payroll Processing</h1>
           </div>
           <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600" htmlFor="payroll-period">Period</label>
             <select
+              id="payroll-period"
               value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value)}
               className="input w-auto"
               disabled={status !== 'idle' && status !== 'loaded'}
             >
+              {selectedPeriod && !periods.includes(selectedPeriod) && (
+                <option value={selectedPeriod}>{selectedPeriod}</option>
+              )}
               {periods.map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>
-            <button onClick={fetchEmployees} disabled={loading} className="btn-secondary">
+            <input
+              type="month"
+              aria-label="New payroll period"
+              title="Pick a new period (YYYY-MM)"
+              value={selectedPeriod}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                setSelectedPeriod(v);
+                setPeriods((prev) => (prev.includes(v) ? prev : [v, ...prev]));
+              }}
+              disabled={status !== 'idle' && status !== 'loaded'}
+              className="input w-auto"
+            />
+            <button onClick={fetchEmployees} disabled={loading} aria-label="Refresh payroll data" title="Refresh" className="btn-secondary">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
@@ -398,8 +467,11 @@ export default function PayrollPage() {
               </div>
               <div>
                 <h3 className="font-medium text-blue-800">Payroll Workflow</h3>
+                <p className="text-sm text-blue-700 mt-1">
+                  Current period: <span className="font-semibold">{selectedPeriod || '— not selected —'}</span>
+                </p>
                 <ol className="text-sm text-blue-700 mt-1 list-decimal list-inside space-y-1">
-                  <li>Select payroll period above</li>
+                  <li>Select or type a payroll period (YYYY-MM) in the header above</li>
                   <li>Click &quot;Calculate&quot; to compute all earnings, deductions, and net pay</li>
                   <li>Review calculations and click &quot;Validate&quot; to check for errors</li>
                   <li>Click &quot;Save Payroll&quot; to persist to database</li>
@@ -418,36 +490,38 @@ export default function PayrollPage() {
         <div className="card">
           <div className="overflow-x-auto">
             <table className="table min-w-[1400px]">
-              <thead className="sticky top-0 bg-gray-50">
-                <tr>
-                  <th className="w-24">Emp ID</th>
-                  <th className="w-40">Name</th>
-                  <th className="w-28">Department</th>
-                  <th className="w-28 text-right">Basic</th>
-                  <th className="w-28 text-right">Allowances</th>
-                  <th className="w-24 text-right">OT Hours</th>
-                  <th className="w-24 text-right">OT Rate</th>
-                  <th className="w-28 text-right">OT Pay</th>
-                  <th className="w-24 text-right">Bonuses</th>
-                  <th className="w-28 text-right">Other Earn</th>
-                  <th className="w-28 text-right font-medium bg-yellow-50">Gross</th>
-                  <th className="w-24 text-right bg-red-50">PAYE</th>
-                  <th className="w-24 text-right bg-red-50">Pension EE</th>
-                  <th className="w-24 text-right bg-green-50">Pension ER</th>
-                  <th className="w-24 text-right bg-red-50">Other Ded</th>
-                  <th className="w-28 text-right font-medium bg-red-50">Total Ded</th>
-                  <th className="w-28 text-right font-medium bg-green-50">Net Pay</th>
-                  <th className="w-28 text-right font-medium bg-blue-50">Employer Cost</th>
-                </tr>
-              </thead>
+<thead className="sticky top-0 bg-gray-50">
+                 <tr>
+                   <th className="w-24">Emp ID</th>
+                   <th className="w-40">Name</th>
+                   <th className="w-28">Department</th>
+                   <th className="w-28 text-right">Basic</th>
+                   <th className="w-28 text-right">Allowances</th>
+                   <th className="w-24 text-right">Normal OT</th>
+                   <th className="w-24 text-right">Public OT</th>
+                   <th className="w-24 text-right">Off-day OT</th>
+                   <th className="w-28 text-right">OT Pay</th>
+                   <th className="w-24 text-right">Bonuses</th>
+                   <th className="w-28 text-right">Other Earn</th>
+                   <th className="w-28 text-right font-medium bg-yellow-50">Gross</th>
+                   <th className="w-24 text-right bg-red-50">PAYE</th>
+                   <th className="w-24 text-right bg-red-50">Pension EE</th>
+<th className="w-24 text-right bg-green-50">Pension ER</th>
+                    <th className="w-24 text-right bg-red-50">TEVET Levy</th>
+                    <th className="w-24 text-right bg-red-50">Other Ded</th>
+                   <th className="w-28 text-right font-medium bg-red-50">Total Ded</th>
+                   <th className="w-28 text-right font-medium bg-green-50">Net Pay</th>
+                   <th className="w-28 text-right font-medium bg-blue-50">Employer Cost</th>
+                 </tr>
+               </thead>
               <tbody>
-                {payrollRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={19} className="px-4 py-8 text-center text-gray-500">
-                      Select a period and click Refresh to load employees
-                    </td>
-                  </tr>
-                ) : (
+{payrollRows.length === 0 ? (
+                   <tr>
+                     <td colSpan={20} className="px-4 py-8 text-center text-gray-500">
+                       Select a period and click Refresh to load employees
+                     </td>
+                   </tr>
+                 ) : (
                   payrollRows.map((row) => (
                     <tr key={row.id} className={!row.isValid ? 'bg-red-50' : ''}>
                       <td className="font-mono text-sm">{row.employeeId}</td>
@@ -474,8 +548,8 @@ export default function PayrollPage() {
                       <td className="text-right font-mono">
                         <input
                           type="number"
-                          value={row.overtimeHours}
-                          onChange={(e) => handleInputChange(row.id, 'overtimeHours', parseFloat(e.target.value) || 0)}
+                          value={row.normalOvertimeHours}
+                          onChange={(e) => handleInputChange(row.id, 'normalOvertimeHours', parseFloat(e.target.value) || 0)}
                           className="input w-20 text-right font-mono"
                           min="0"
                           step="0.5"
@@ -484,11 +558,21 @@ export default function PayrollPage() {
                       <td className="text-right font-mono">
                         <input
                           type="number"
-                          value={row.overtimeRate}
-                          onChange={(e) => handleInputChange(row.id, 'overtimeRate', parseFloat(e.target.value) || DEFAULT_STATUTORY_CONFIG.overtimeRateMultiplier)}
+                          value={row.publicHolidayOvertimeHours}
+                          onChange={(e) => handleInputChange(row.id, 'publicHolidayOvertimeHours', parseFloat(e.target.value) || 0)}
                           className="input w-20 text-right font-mono"
                           min="0"
-                          step="0.1"
+                          step="0.5"
+                        />
+                      </td>
+                      <td className="text-right font-mono">
+                        <input
+                          type="number"
+                          value={row.offDayOvertimeHours}
+                          onChange={(e) => handleInputChange(row.id, 'offDayOvertimeHours', parseFloat(e.target.value) || 0)}
+                          className="input w-20 text-right font-mono"
+                          min="0"
+                          step="0.5"
                         />
                       </td>
                       <td className="text-right font-mono text-blue-600">{formatCurrency(row.overtimePay)}</td>
@@ -516,6 +600,7 @@ export default function PayrollPage() {
                       <td className="text-right font-mono text-red-600">{formatCurrency(row.paye)}</td>
                       <td className="text-right font-mono text-red-600">{formatCurrency(row.pensionEE)}</td>
                       <td className="text-right font-mono text-green-600">{formatCurrency(row.pensionER)}</td>
+                      <td className="text-right font-mono text-red-600">{formatCurrency(row.tevetLevy)}</td>
                       <td className="text-right font-mono">
                         <input
                           type="number"
@@ -539,6 +624,7 @@ export default function PayrollPage() {
                   <td className="text-right font-mono">{formatCurrency(totals.allowances)}</td>
                   <td></td>
                   <td></td>
+                  <td></td>
                   <td className="text-right font-mono">{formatCurrency(totals.overtimePay)}</td>
                   <td className="text-right font-mono">{formatCurrency(totals.bonuses)}</td>
                   <td className="text-right font-mono">{formatCurrency(totals.otherEarnings)}</td>
@@ -546,6 +632,7 @@ export default function PayrollPage() {
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.paye)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.pensionEE)}</td>
                   <td className="text-right font-mono text-green-600">{formatCurrency(totals.pensionER)}</td>
+                  <td className="text-right font-mono text-red-600">{formatCurrency(totals.tevetLevy)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.otherDeductions)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.totalDeductions)}</td>
                   <td className="text-right font-mono text-green-600">{formatCurrency(totals.netPay)}</td>

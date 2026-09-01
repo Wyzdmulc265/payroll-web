@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
 const updateEmployeeSchema = z.object({

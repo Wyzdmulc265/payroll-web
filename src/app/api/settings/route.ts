@@ -32,6 +32,27 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const key = request.nextUrl.searchParams.get('key');
+    if (!key) {
+      return NextResponse.json(
+        { success: false, error: 'Query parameter "key" is required' },
+        { status: 400 }
+      );
+    }
+
+    await prisma.settings.delete({ where: { key } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting setting:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
