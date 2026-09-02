@@ -63,7 +63,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: employees,
+      // Prisma Decimal serializes to a string in JSON; coerce money fields to
+      // numbers so clients never receive strings that would concatenate on "+".
+      data: employees.map((e) => ({
+        ...e,
+        basicSalary: Number(e.basicSalary),
+        allowances: Number(e.allowances),
+      })),
       pagination: {
         page,
         limit,

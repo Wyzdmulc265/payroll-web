@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
           'Employee ID', 'Employee Name', 'Department', 'Position',
           'Basic Salary', 'Allowances', 'Overtime Pay', 'Bonuses',
           'Other Earnings', 'Gross Earnings', 'PAYE', 'Pension (EE)',
-          'Pension (ER)', 'Other Deductions', 'Total Deductions',
+          'Pension (ER)', 'TEVET Levy', 'FBT Base', 'FBT', 'Other Deductions', 'Total Deductions',
           'Net Pay', 'Employer Cost'
         ];
         reportData = records.map(r => [
@@ -71,6 +71,9 @@ export async function GET(request: NextRequest) {
           formatCurrency(Number(r.paye)),
           formatCurrency(Number(r.pensionEE)),
           formatCurrency(Number(r.pensionER)),
+          formatCurrency(Number(r.tevetLevy)),
+          formatCurrency(Number(r.fringeBenefitBase)),
+          formatCurrency(Number(r.fringeBenefitTax)),
           formatCurrency(Number(r.otherDeductions)),
           formatCurrency(Number(r.totalDeductions)),
           formatCurrency(Number(r.netPay)),
@@ -94,6 +97,8 @@ export async function GET(request: NextRequest) {
               totalPAYE: 0,
               totalPensionEE: 0,
               totalPensionER: 0,
+              totalTEVET: 0,
+              totalFBT: 0,
               totalOtherDed: 0,
               totalDeductions: 0,
               totalNetPay: 0,
@@ -110,6 +115,8 @@ export async function GET(request: NextRequest) {
           d.totalPAYE += Number(r.paye);
           d.totalPensionEE += Number(r.pensionEE);
           d.totalPensionER += Number(r.pensionER);
+          d.totalTEVET += Number(r.tevetLevy);
+          d.totalFBT += Number(r.fringeBenefitTax);
           d.totalOtherDed += Number(r.otherDeductions);
           d.totalDeductions += Number(r.totalDeductions);
           d.totalNetPay += Number(r.netPay);
@@ -126,6 +133,8 @@ export async function GET(request: NextRequest) {
           totalPAYE: number;
           totalPensionEE: number;
           totalPensionER: number;
+          totalTEVET: number;
+          totalFBT: number;
           totalOtherDed: number;
           totalDeductions: number;
           totalNetPay: number;
@@ -136,7 +145,7 @@ export async function GET(request: NextRequest) {
           'Department', 'Employees', 'Gross Payroll', 'Total Allowances',
           'Total Overtime', 'Total Bonuses', 'Total Gross',
           'Total PAYE', 'Total Pension EE', 'Total Pension ER',
-          'Total Other Ded', 'Total Deductions', 'Total Net Pay',
+          'Total TEVET', 'Total FBT', 'Total Other Ded', 'Total Deductions', 'Total Net Pay',
           'Total Employer Cost'
         ];
         reportData = Object.values(deptSummary).map(d => [
@@ -145,6 +154,7 @@ export async function GET(request: NextRequest) {
           formatCurrency(d.totalOvertime), formatCurrency(d.totalBonuses),
           formatCurrency(d.totalGross), formatCurrency(d.totalPAYE),
           formatCurrency(d.totalPensionEE), formatCurrency(d.totalPensionER),
+          formatCurrency(d.totalTEVET), formatCurrency(d.totalFBT),
           formatCurrency(d.totalOtherDed), formatCurrency(d.totalDeductions),
           formatCurrency(d.totalNetPay), formatCurrency(d.totalEmployerCost),
         ]);
@@ -156,8 +166,9 @@ export async function GET(request: NextRequest) {
         const totalPensionEE = records.reduce((sum, r) => sum + Number(r.pensionEE), 0);
         const totalPensionER = records.reduce((sum, r) => sum + Number(r.pensionER), 0);
         const totalTEVET = records.reduce((sum, r) => sum + Number(r.grossEarnings) * (config.tevetLevyPercent / 100), 0);
+        const totalFBT = records.reduce((sum, r) => sum + Number(r.fringeBenefitTax), 0);
 
-        headers = ['Period', 'Total Gross', 'Total PAYE', 'Total Pension EE', 'Total Pension ER', 'Total TEVET Levy', 'Total Employer Statutory Cost'];
+        headers = ['Period', 'Total Gross', 'Total PAYE', 'Total Pension EE', 'Total Pension ER', 'Total TEVET Levy', 'Total FBT', 'Total Employer Statutory Cost'];
         reportData = [[
           period,
           formatCurrency(totalGross),
@@ -165,7 +176,8 @@ export async function GET(request: NextRequest) {
           formatCurrency(totalPensionEE),
           formatCurrency(totalPensionER),
           formatCurrency(totalTEVET),
-          formatCurrency(totalPensionER + totalTEVET),
+          formatCurrency(totalFBT),
+          formatCurrency(totalPensionER + totalTEVET + totalFBT),
         ]];
         break;
 
@@ -173,7 +185,7 @@ export async function GET(request: NextRequest) {
         headers = [
           'Department', 'Employees', 'Basic Salary', 'Allowances',
           'Overtime', 'Bonuses', 'Other Earnings', 'Gross Earnings',
-          'PAYE', 'Pension EE', 'Pension ER', 'Other Ded',
+          'PAYE', 'Pension EE', 'Pension ER', 'TEVET Levy', 'FBT', 'Other Ded',
           'Total Ded', 'Net Pay', 'Employer Cost'
         ];
         reportData = records.map(r => [
@@ -182,7 +194,8 @@ export async function GET(request: NextRequest) {
           formatCurrency(Number(r.overtimePay)), formatCurrency(Number(r.bonuses)),
           formatCurrency(Number(r.otherEarnings)), formatCurrency(Number(r.grossEarnings)),
           formatCurrency(Number(r.paye)), formatCurrency(Number(r.pensionEE)),
-          formatCurrency(Number(r.pensionER)), formatCurrency(Number(r.otherDeductions)),
+          formatCurrency(Number(r.pensionER)), formatCurrency(Number(r.tevetLevy)),
+          formatCurrency(Number(r.fringeBenefitTax)), formatCurrency(Number(r.otherDeductions)),
           formatCurrency(Number(r.totalDeductions)), formatCurrency(Number(r.netPay)),
           formatCurrency(Number(r.employerCost)),
         ]);
@@ -222,7 +235,8 @@ export async function GET(request: NextRequest) {
         headers = [
           'Payroll Period', 'Basic Salary', 'Allowances', 'Overtime',
           'Bonuses', 'Other Earnings', 'Gross Earnings',
-          'PAYE', 'Pension EE', 'Other Ded', 'Total Ded', 'Net Pay'
+          'PAYE', 'Pension EE', 'Other Ded', 'Total Ded', 'Net Pay',
+          'Fringe Benefit Base', 'FBT'
         ];
         reportData = history.map(r => [
           r.payrollPeriod,
@@ -232,6 +246,8 @@ export async function GET(request: NextRequest) {
           formatCurrency(Number(r.paye)), formatCurrency(Number(r.pensionEE)),
           formatCurrency(Number(r.otherDeductions)), formatCurrency(Number(r.totalDeductions)),
           formatCurrency(Number(r.netPay)),
+          formatCurrency(Number(r.fringeBenefitBase)),
+          formatCurrency(Number(r.fringeBenefitTax)),
         ]);
         break;
 

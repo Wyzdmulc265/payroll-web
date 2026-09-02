@@ -42,6 +42,9 @@ interface PayslipData {
   netPay: number;
   pensionER: number;
   tevetLevy: number;
+  fringeBenefitBase: number;
+  fringeBenefitTax: number;
+  fbtSummary: any;
   employerCost: number;
   formatted: Record<string, string>;
 }
@@ -61,12 +64,15 @@ interface PeriodOption {
 export default function PayslipsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('2026-08');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [payslip, setPayslip] = useState<PayslipData | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const currentYear = new Date().getFullYear();
+  const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 
   const fetchEmployees = async () => {
     try {
@@ -86,9 +92,7 @@ export default function PayslipsPage() {
       const data = await res.json();
       if (data.success && data.data.periods) {
         setPeriods(data.data.periods);
-        if (data.data.periods.length > 0) {
-          setSelectedPeriod(data.data.periods[0]);
-        }
+        setSelectedPeriod((prev) => prev || data.data.periods[0] || suggestedPeriod);
       }
     } catch (error) {
       console.error('Failed to fetch periods:', error);
@@ -186,10 +190,29 @@ export default function PayslipsPage() {
                 onChange={(e) => setSelectedPeriod(e.target.value)}
                 className="input"
               >
+                {selectedPeriod && !periods.includes(selectedPeriod) && (
+                  <option value={selectedPeriod}>{selectedPeriod}</option>
+                )}
                 {periods.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="label">Or pick period</label>
+              <input
+                type="month"
+                aria-label="Pick a new period (YYYY-MM)"
+                title="Pick a new period (YYYY-MM)"
+                value={selectedPeriod}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setSelectedPeriod(v);
+                  setPeriods((prev) => (prev.includes(v) ? prev : [v, ...prev]));
+                }}
+                className="input"
+              />
             </div>
             <div>
               <label className="label">Employee *</label>
@@ -435,6 +458,18 @@ export default function PayslipsPage() {
                       <td>TEVET Levy (1%)</td>
                       <td className="text-right font-mono text-green-600">{payslip.formatted.tevetLevy}</td>
                     </tr>
+                    {payslip.fringeBenefitTax > 0 && (
+                      <>
+                        <tr>
+                          <td>Fringe Benefit Taxable Base</td>
+                          <td className="text-right font-mono">{payslip.formatted.fringeBenefitBase}</td>
+                        </tr>
+                        <tr>
+                          <td>Fringe Benefit Tax ({payslip.fbtSummary?.fbtRate ?? 30}%)</td>
+                          <td className="text-right font-mono text-green-600">{payslip.formatted.fringeBenefitTax}</td>
+                        </tr>
+                      </>
+                    )}
                     <tr className="bg-blue-50 font-semibold">
                       <td>Total Employer Cost</td>
                       <td className="text-right font-mono text-blue-600">{payslip.formatted.employerCost}</td>

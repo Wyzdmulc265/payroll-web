@@ -8,6 +8,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Minus, Search, Filter
 } from 'lucide-react';
 import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings } from '@/lib/payroll-engine';
+import { FringeBenefitType, BenefitPaymentMethod, FringeBenefitInput, calculateEmployerFBT } from '@/lib/fbt-engine';
 
 interface Employee {
   id: string;
@@ -42,6 +43,8 @@ interface PayrollRow {
   totalDeductions: number;
   netPay: number;
   employerCost: number;
+  fringeBenefitBase: number;
+  fringeBenefitTax: number;
   // Validation
   isValid: boolean;
   errors: string[];
@@ -84,8 +87,9 @@ export default function PayrollPage() {
            employeeName: emp.fullName,
            department: emp.department,
            position: emp.position,
-           basicSalary: emp.basicSalary,
-           allowances: emp.allowances,
+           // Defensive: coerce in case the API ever returns Prisma Decimals as strings.
+           basicSalary: Number(emp.basicSalary) || 0,
+           allowances: Number(emp.allowances) || 0,
            normalOvertimeHours: 0,
            publicHolidayOvertimeHours: 0,
            offDayOvertimeHours: 0,
@@ -101,6 +105,8 @@ export default function PayrollPage() {
            totalDeductions: 0,
            netPay: 0,
            employerCost: 0,
+           fringeBenefitBase: 0,
+           fringeBenefitTax: 0,
            isValid: true,
            errors: [],
          }));
@@ -185,37 +191,37 @@ const calculateOvertimePay = (row: PayrollRow) => {
    };
 
 const recalculateRow = (row: PayrollRow): PayrollRow => {
-     const overtimePay = calculateOvertimePay(row);
-     const [year, month] = selectedPeriod.split('-').map(Number);
-     const input: PayrollInput = {
-       basicSalary: row.basicSalary,
-       allowances: row.allowances,
-       normalOvertimeHours: row.normalOvertimeHours,
-       publicHolidayOvertimeHours: row.publicHolidayOvertimeHours,
-       offDayOvertimeHours: row.offDayOvertimeHours,
-       bonuses: row.bonuses,
-       otherEarnings: row.otherEarnings,
-       otherDeductions: row.otherDeductions,
-       // Period-aware overtime: actual Mon–Fri days of the selected month.
-       workingDaysInPeriod: Number.isFinite(year) && Number.isFinite(month)
-         ? getWorkingDaysInMonth(year, month)
-         : undefined,
-     };
-     const result = calculatePayroll(input, config!);
-     
-     // Validate
-     const errors: string[] = [];
-     if (result.netPay < 0) errors.push('Negative net pay');
-     if (result.paye < 0) errors.push('Invalid PAYE');
-     if (result.pensionEE < 0 || result.pensionER < 0) errors.push('Invalid pension');
-     
-     return {
-       ...row,
-       ...result,
-       isValid: errors.length === 0,
-       errors,
-     };
-   };
+      const overtimePay = calculateOvertimePay(row);
+      const [year, month] = selectedPeriod.split('-').map(Number);
+      const input: PayrollInput = {
+        basicSalary: row.basicSalary,
+        allowances: row.allowances,
+        normalOvertimeHours: row.normalOvertimeHours,
+        publicHolidayOvertimeHours: row.publicHolidayOvertimeHours,
+        offDayOvertimeHours: row.offDayOvertimeHours,
+        bonuses: row.bonuses,
+        otherEarnings: row.otherEarnings,
+        otherDeductions: row.otherDeductions,
+        // Period-aware overtime: actual Mon–Fri days of the selected month.
+        workingDaysInPeriod: Number.isFinite(year) && Number.isFinite(month)
+          ? getWorkingDaysInMonth(year, month)
+          : undefined,
+      };
+      const result = calculatePayroll(input, config!);
+
+      // Validate
+      const errors: string[] = [];
+      if (result.netPay < 0) errors.push('Negative net pay');
+      if (result.paye < 0) errors.push('Invalid PAYE');
+      if (result.pensionEE < 0 || result.pensionER < 0) errors.push('Invalid pension');
+
+      return {
+        ...row,
+        ...result,
+        isValid: errors.length === 0,
+        errors,
+      };
+    };
 
   const handleInputChange = (id: string, field: keyof PayrollRow, value: string | number | boolean) => {
     setPayrollRows(prev => prev.map(row => {
@@ -274,7 +280,7 @@ const recalculateRow = (row: PayrollRow): PayrollRow => {
 const handleSave = async () => {
      setSaving(true);
      setError(null);
-     
+
      try {
        const overtimeData = payrollRows
          .filter(r => r.normalOvertimeHours > 0 || r.publicHolidayOvertimeHours > 0 || r.offDayOvertimeHours > 0 || r.bonuses > 0 || r.otherEarnings > 0 || r.otherDeductions > 0)
@@ -287,7 +293,7 @@ const handleSave = async () => {
            otherEarnings: r.otherEarnings,
            otherDeductions: r.otherDeductions,
          }));
- 
+
        const res = await fetch('/api/payroll', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
@@ -296,9 +302,9 @@ const handleSave = async () => {
            overtimeData,
          }),
        });
- 
+
        const data = await res.json();
- 
+
        if (data.success) {
          setStatus('saved');
          setSuccessMessage(`Payroll saved for ${data.data.processedCount} employees!`);
@@ -331,6 +337,8 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
      acc.pensionEE += row.pensionEE;
      acc.pensionER += row.pensionER;
      acc.tevetLevy += row.tevetLevy;
+     acc.fringeBenefitBase += row.fringeBenefitBase;
+     acc.fringeBenefitTax += row.fringeBenefitTax;
      acc.otherDeductions += row.otherDeductions;
      acc.totalDeductions += row.totalDeductions;
      acc.netPay += row.netPay;
@@ -338,8 +346,9 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
      return acc;
    }, {
      basicSalary: 0, allowances: 0, overtimePay: 0, bonuses: 0, otherEarnings: 0,
-     grossEarnings: 0, paye: 0, pensionEE: 0, pensionER: 0, tevetLevy: 0, otherDeductions: 0,
-     totalDeductions: 0, netPay: 0, employerCost: 0,
+     grossEarnings: 0, paye: 0, pensionEE: 0, pensionER: 0, tevetLevy: 0,
+     fringeBenefitBase: 0, fringeBenefitTax: 0,
+     otherDeductions: 0, totalDeductions: 0, netPay: 0, employerCost: 0,
    }), [payrollRows]);
 
   return (
@@ -490,7 +499,7 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
         <div className="card">
           <div className="overflow-x-auto">
             <table className="table min-w-[1400px]">
-<thead className="sticky top-0 bg-gray-50">
+                <thead className="sticky top-0 bg-gray-50">
                  <tr>
                    <th className="w-24">Emp ID</th>
                    <th className="w-40">Name</th>
@@ -506,9 +515,11 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
                    <th className="w-28 text-right font-medium bg-yellow-50">Gross</th>
                    <th className="w-24 text-right bg-red-50">PAYE</th>
                    <th className="w-24 text-right bg-red-50">Pension EE</th>
-<th className="w-24 text-right bg-green-50">Pension ER</th>
-                    <th className="w-24 text-right bg-red-50">TEVET Levy</th>
-                    <th className="w-24 text-right bg-red-50">Other Ded</th>
+                   <th className="w-24 text-right bg-green-50">Pension ER</th>
+                   <th className="w-24 text-right bg-red-50">TEVET Levy</th>
+                   <th className="w-28 text-right bg-yellow-50">FBT Base</th>
+                   <th className="w-24 text-right bg-red-50">FBT</th>
+                   <th className="w-24 text-right bg-red-50">Other Ded</th>
                    <th className="w-28 text-right font-medium bg-red-50">Total Ded</th>
                    <th className="w-28 text-right font-medium bg-green-50">Net Pay</th>
                    <th className="w-28 text-right font-medium bg-blue-50">Employer Cost</th>
@@ -599,18 +610,20 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
                       <td className="text-right font-mono font-medium text-blue-600">{formatCurrency(row.grossEarnings)}</td>
                       <td className="text-right font-mono text-red-600">{formatCurrency(row.paye)}</td>
                       <td className="text-right font-mono text-red-600">{formatCurrency(row.pensionEE)}</td>
-                      <td className="text-right font-mono text-green-600">{formatCurrency(row.pensionER)}</td>
-                      <td className="text-right font-mono text-red-600">{formatCurrency(row.tevetLevy)}</td>
-                      <td className="text-right font-mono">
-                        <input
-                          type="number"
-                          value={row.otherDeductions}
-                          onChange={(e) => handleInputChange(row.id, 'otherDeductions', parseFloat(e.target.value) || 0)}
-                          className="input w-24 text-right font-mono"
-                          min="0"
-                          step="1000"
-                        />
-                      </td>
+                       <td className="text-right font-mono text-green-600">{formatCurrency(row.pensionER)}</td>
+                       <td className="text-right font-mono text-red-600">{formatCurrency(row.tevetLevy)}</td>
+                       <td className="text-right font-mono text-yellow-600">{formatCurrency(row.fringeBenefitBase)}</td>
+                       <td className="text-right font-mono text-red-600">{formatCurrency(row.fringeBenefitTax)}</td>
+                       <td className="text-right font-mono">
+                         <input
+                           type="number"
+                           value={row.otherDeductions}
+                           onChange={(e) => handleInputChange(row.id, 'otherDeductions', parseFloat(e.target.value) || 0)}
+                           className="input w-24 text-right font-mono"
+                           min="0"
+                           step="1000"
+                         />
+                       </td>
                       <td className="text-right font-mono font-medium text-red-600">{formatCurrency(row.totalDeductions)}</td>
                       <td className="text-right font-mono font-medium text-green-600">{formatCurrency(row.netPay)}</td>
                       <td className="text-right font-mono font-medium text-blue-600">{formatCurrency(row.employerCost)}</td>
@@ -633,6 +646,8 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.pensionEE)}</td>
                   <td className="text-right font-mono text-green-600">{formatCurrency(totals.pensionER)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.tevetLevy)}</td>
+                  <td className="text-right font-mono text-yellow-600">{formatCurrency(totals.fringeBenefitBase)}</td>
+                  <td className="text-right font-mono text-red-600">{formatCurrency(totals.fringeBenefitTax)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.otherDeductions)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.totalDeductions)}</td>
                   <td className="text-right font-mono text-green-600">{formatCurrency(totals.netPay)}</td>

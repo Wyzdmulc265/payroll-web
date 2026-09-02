@@ -92,11 +92,11 @@ const PENSION_FIELDS: FieldDef[] = [
 ];
 
 const OTHER_STATUTORY_FIELDS: FieldDef[] = [
-  { key: 'statutory.tevet_levy_rate', label: 'TEVET Levy Rate', type: 'number', helper: 'Employer TEVET levy % of gross salary', min: 0, max: 100, step: 0.1 },
-  { key: 'statutory.fringe_benefit_tax_rate', label: 'Fringe Benefit Tax Rate', type: 'number', helper: 'Fringe benefit tax %', min: 0, max: 100, step: 0.1 },
-  { key: 'statutory.leave_days_per_year', label: 'Annual Leave Days', type: 'number', helper: 'Standard annual leave entitlement', min: 0, max: 60 },
-  { key: 'statutory.sick_days_per_year', label: 'Sick Leave Days', type: 'number', helper: 'Standard annual sick leave entitlement', min: 0, max: 60 },
-];
+   { key: 'statutory.tevet_levy_rate', label: 'TEVET Levy Rate', type: 'number', helper: 'Employer TEVET levy % of gross salary', min: 0, max: 100, step: 0.1 },
+   { key: 'statutory.fringe_benefit_tax_rate', label: 'Fringe Benefit Tax Rate', type: 'number', helper: 'Effective rate applied to fringe-benefit taxable base. Defaults to 30% if not set. Source: Malawi Taxation Act.', min: 0, max: 100, step: 0.1 },
+   { key: 'statutory.leave_days_per_year', label: 'Annual Leave Days', type: 'number', helper: 'Standard annual leave entitlement', min: 0, max: 60 },
+   { key: 'statutory.sick_days_per_year', label: 'Sick Leave Days', type: 'number', helper: 'Standard annual sick leave entitlement', min: 0, max: 60 },
+ ];
 
 const SYSTEM_FIELDS: FieldDef[] = [
   { key: 'default_report_period', label: 'Default Report Period', type: 'text', helper: 'Default range shown on the Reports page' },

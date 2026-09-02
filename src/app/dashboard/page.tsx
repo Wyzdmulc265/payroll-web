@@ -25,6 +25,7 @@ interface DashboardData {
     paye: number;
     pensionEE: number;
     pensionER: number;
+    fbt: number;
     employerCost: number;
     formatted: {
       grossPayroll: string;
@@ -33,6 +34,7 @@ interface DashboardData {
       paye: string;
       pensionEE: string;
       pensionER: string;
+      fbt: string;
       employerCost: string;
     };
   };
@@ -45,6 +47,7 @@ interface DashboardData {
       paye: number;
       pensionEE: number;
       pensionER: number;
+      fbt: number;
       employerCost: number;
     }>;
     monthlyTrend: Array<{
@@ -69,8 +72,11 @@ const COLORS = ['#1e40af', '#059669', '#dc2626', '#d97706', '#7c3aed', '#0891b2'
 export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [periods, setPeriods] = useState<string[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('2026-08');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [loading, setLoading] = useState(true);
+
+  const currentYear = new Date().getFullYear();
+  const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 
   const fetchDashboard = async () => {
     setLoading(true);
@@ -93,9 +99,7 @@ export default function DashboardPage() {
       const data = await res.json();
       if (data.success && data.data.periods) {
         setPeriods(data.data.periods);
-        if (!selectedPeriod && data.data.periods.length > 0) {
-          setSelectedPeriod(data.data.periods[0]);
-        }
+        setSelectedPeriod((prev) => prev || data.data.periods[0] || suggestedPeriod);
       }
     } catch (error) {
       console.error('Failed to fetch periods:', error);
@@ -164,6 +168,14 @@ export default function DashboardPage() {
       iconColor: 'text-indigo-600',
       bgColor: 'bg-indigo-100'
     },
+    { 
+      label: 'Total FBT', 
+      value: dashboardData?.kpis.formatted.fbt || 'MWK 0.00', 
+      icon: CreditCard, 
+      color: 'bg-amber-500', 
+      iconColor: 'text-amber-600',
+      bgColor: 'bg-amber-100'
+    },
   ];
 
   if (loading && !dashboardData) {
@@ -192,15 +204,33 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
           </div>
           <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600" htmlFor="dashboard-period">Period</label>
             <select
+              id="dashboard-period"
               value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value)}
               className="input w-auto"
             >
+              {selectedPeriod && !periods.includes(selectedPeriod) && (
+                <option value={selectedPeriod}>{selectedPeriod}</option>
+              )}
               {periods.map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>
+            <input
+              type="month"
+              aria-label="Pick a period (YYYY-MM)"
+              title="Pick a period (YYYY-MM)"
+              value={selectedPeriod}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                setSelectedPeriod(v);
+                setPeriods((prev) => (prev.includes(v) ? prev : [v, ...prev]));
+              }}
+              className="input w-auto"
+            />
             <button onClick={fetchDashboard} disabled={loading} aria-label="Refresh dashboard" title="Refresh" className="btn-secondary">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -402,6 +432,7 @@ export default function DashboardPage() {
                     <th className="text-right">PAYE</th>
                     <th className="text-right">Pension (EE)</th>
                     <th className="text-right">Pension (ER)</th>
+                    <th className="text-right">FBT</th>
                     <th className="text-right">Employer Cost</th>
                   </tr>
                 </thead>
@@ -418,6 +449,7 @@ export default function DashboardPage() {
                       <td className="text-right font-mono text-red-600">{formatCurrency(dept.paye)}</td>
                       <td className="text-right font-mono">{formatCurrency(dept.pensionEE)}</td>
                       <td className="text-right font-mono">{formatCurrency(dept.pensionER)}</td>
+                      <td className="text-right font-mono text-amber-600">{formatCurrency(dept.fbt)}</td>
                       <td className="text-right font-mono text-blue-600">{formatCurrency(dept.employerCost)}</td>
                     </tr>
                   ))}
@@ -429,6 +461,7 @@ export default function DashboardPage() {
                     <td className="text-right font-mono text-red-600">{dashboardData?.kpis.formatted.paye || 'MWK 0.00'}</td>
                     <td className="text-right font-mono">{dashboardData?.kpis.formatted.pensionEE || 'MWK 0.00'}</td>
                     <td className="text-right font-mono">{dashboardData?.kpis.formatted.pensionER || 'MWK 0.00'}</td>
+                    <td className="text-right font-mono text-amber-600">{dashboardData?.kpis.formatted.fbt || 'MWK 0.00'}</td>
                     <td className="text-right font-mono text-blue-600">{dashboardData?.kpis.formatted.employerCost || 'MWK 0.00'}</td>
                   </tr>
                 </tbody>

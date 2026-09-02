@@ -6,10 +6,39 @@ import {
   calculateTEVETLevy,
   calculateOvertimePay,
   calculatePayroll,
+  calculateGrossEarnings,
+  calculateTotalDeductions,
+  calculateNetPay,
+  calculateEmployerCost,
   buildStatutoryConfigFromSettings,
   DEFAULT_STATUTORY_CONFIG,
   selectEffectiveSettings,
 } from './payroll-engine';
+import { FringeBenefitType, BenefitPaymentMethod } from './fbt-engine';
+
+describe('string Decimal regression guards', () => {
+  // Prisma Decimal values serialize to strings over JSON. These tests ensure a
+  // string can never cause `+` to concatenate instead of sum.
+  it('calculateGrossEarnings coerces string operands', () => {
+    expect(
+      calculateGrossEarnings('600000' as unknown as number, '80000' as unknown as number, 0, 0, 0)
+    ).toBe(680000);
+  });
+
+  it('calculateTotalDeductions coerces string operands', () => {
+    expect(
+      calculateTotalDeductions('153000' as unknown as number, '34000' as unknown as number, 0)
+    ).toBe(187000);
+  });
+
+  it('calculateNetPay coerces string operands', () => {
+    expect(calculateNetPay('680000' as unknown as number, '187000' as unknown as number)).toBe(493000);
+  });
+
+  it('calculateEmployerCost coerces string operands', () => {
+    expect(calculateEmployerCost('680000' as unknown as number, '68000' as unknown as number, '6800' as unknown as number)).toBe(754800);
+  });
+});
 
 describe('calculatePAYE (Malawi 2026 bands)', () => {
   it('is 0 at and below the first band threshold', () => {
@@ -105,6 +134,38 @@ describe('calculatePayroll', () => {
      expect(result.totalDeductions).toBe(319455);
      expect(result.netPay).toBe(748727);
      expect(result.employerCost).toBe(1178864);
+     expect(result.fringeBenefitBase).toBe(0);
+     expect(result.fringeBenefitTax).toBe(0);
+   });
+
+   it('adds FBT to employerCost and leaves netPay unchanged', () => {
+     const result = calculatePayroll(
+       {
+         basicSalary: 800000,
+         allowances: 150000,
+         normalOvertimeHours: 10,
+         publicHolidayOvertimeHours: 0,
+         offDayOvertimeHours: 0,
+         bonuses: 50000,
+         otherEarnings: 0,
+         otherDeductions: 0,
+         fringeBenefits: [
+           {
+             type: FringeBenefitType.MOTOR_VEHICLE,
+             amount: 30_000_000,
+             originalCost: 30_000_000,
+             effectiveFrom: new Date('2026-08-01'),
+           },
+         ],
+       },
+       DEFAULT_STATUTORY_CONFIG
+     );
+
+     expect(result.fringeBenefitBase).toBe(4_500_000);
+     expect(result.fringeBenefitTax).toBe(1_350_000);
+     expect(result.employerCost).toBe(1178864 + 1350000);
+     expect(result.netPay).toBe(748727);
+     expect(result.fbtResult.liabilityType).toBe('EMPLOYER');
    });
  });
 
@@ -132,12 +193,12 @@ describe('selectEffectiveSettings', () => {
 describe('calculateOvertimePay period-aware working days', () => {
    it('uses workingDaysInPeriod when provided (rate scales with day count)', () => {
      const base = calculateOvertimePay(10, 0, 0, 800000, DEFAULT_STATUTORY_CONFIG); // 22 days
-     const fewer = calculateOvertimePay(10, 0, 0, 800000, DEFAULT_STATUTORY_CONFIG, 20);
+     const fewer = calculateOvertimePay(10, 0, 0, 800000, { ...DEFAULT_STATUTORY_CONFIG, workingDaysPerMonth: 20 });
      expect(fewer).toBe(Math.round(base * 22 / 20));
    });
 
    it('falls back to config.workingDaysPerMonth when not provided', () => {
-     expect(calculateOvertimePay(10, 0, 0, 800000, DEFAULT_STATUTORY_CONFIG, undefined)).toBe(68182);
+     expect(calculateOvertimePay(10, 0, 0, 800000, DEFAULT_STATUTORY_CONFIG)).toBe(68182);
    });
  });
 

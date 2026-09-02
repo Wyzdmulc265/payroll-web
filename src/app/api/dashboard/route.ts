@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
     const totalPensionEE = records.reduce((sum, r) => sum + Number(r.pensionEE), 0);
     const totalPensionER = records.reduce((sum, r) => sum + Number(r.pensionER), 0);
     const totalEmployerCost = records.reduce((sum, r) => sum + Number(r.employerCost), 0);
+    const totalFBT = records.reduce((sum, r) => sum + Number(r.fringeBenefitTax), 0);
 
     // Payroll by department
     const byDepartment = records.reduce((acc, r) => {
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
           paye: 0,
           pensionEE: 0,
           pensionER: 0,
+          fbt: 0,
           employerCost: 0,
         };
       }
@@ -62,6 +64,7 @@ export async function GET(request: NextRequest) {
       acc[dept].paye += Number(r.paye);
       acc[dept].pensionEE += Number(r.pensionEE);
       acc[dept].pensionER += Number(r.pensionER);
+      acc[dept].fbt += Number(r.fringeBenefitTax);
       acc[dept].employerCost += Number(r.employerCost);
       return acc;
     }, {} as Record<string, {
@@ -72,6 +75,7 @@ export async function GET(request: NextRequest) {
       paye: number;
       pensionEE: number;
       pensionER: number;
+      fbt: number;
       employerCost: number;
     }>);
 
@@ -110,6 +114,7 @@ export async function GET(request: NextRequest) {
           paye: totalPAYE,
           pensionEE: totalPensionEE,
           pensionER: totalPensionER,
+          fbt: totalFBT,
           employerCost: totalEmployerCost,
           formatted: {
             grossPayroll: formatCurrency(totalGross, config.currency, config.decimalPlaces),
@@ -118,6 +123,7 @@ export async function GET(request: NextRequest) {
             paye: formatCurrency(totalPAYE, config.currency, config.decimalPlaces),
             pensionEE: formatCurrency(totalPensionEE, config.currency, config.decimalPlaces),
             pensionER: formatCurrency(totalPensionER, config.currency, config.decimalPlaces),
+            fbt: formatCurrency(totalFBT, config.currency, config.decimalPlaces),
             employerCost: formatCurrency(totalEmployerCost, config.currency, config.decimalPlaces),
           },
         },
@@ -130,6 +136,7 @@ export async function GET(request: NextRequest) {
             paye: d.paye,
             pensionEE: d.pensionEE,
             pensionER: d.pensionER,
+            fbt: d.fbt,
             employerCost: d.employerCost,
           })),
           monthlyTrend: monthlyTrend.slice().reverse().map(m => ({

@@ -51,6 +51,22 @@ model Employee {
   @@index([isActive])
 }
 
+model FringeBenefit {
+  id              String    @id @default(cuid())
+  payrollRecordId String    @map("payroll_record_id")
+  payrollRecord   PayrollRecord @relation(fields: [payrollRecordId], references: [id], onDelete: Cascade)
+
+  type            String
+  description     String?
+  amount          Decimal   @db.Decimal(15, 2)
+  taxableValue    Decimal   @db.Decimal(15, 2) @default(0) @map("taxable_value")
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@map("fringe_benefits")
+  @@index([payrollRecordId])
+}
+
 model PayrollRecord {
   id              String    @id @default(cuid())
   payrollPeriod   String    @map("payroll_period") // 2026-08
@@ -62,6 +78,9 @@ model PayrollRecord {
   position        String
   basicSalary     Decimal   @db.Decimal(15, 2) @map("basic_salary")
   allowances      Decimal   @db.Decimal(15, 2) @map("allowances")
+  normalOvertimeHours     Decimal @db.Decimal(8, 2) @default(0) @map("normal_overtime_hours")
+  publicHolidayOvertimeHours Decimal @db.Decimal(8, 2) @default(0) @map("public_holiday_overtime_hours")
+  offDayOvertimeHours    Decimal @db.Decimal(8, 2) @default(0) @map("off_day_overtime_hours")
   overtimePay     Decimal   @db.Decimal(15, 2) @default(0) @map("overtime_pay")
   bonuses         Decimal   @db.Decimal(15, 2) @default(0) @map("bonuses")
   otherEarnings   Decimal   @db.Decimal(15, 2) @default(0) @map("other_earnings")
@@ -70,6 +89,9 @@ model PayrollRecord {
   pensionEE       Decimal   @db.Decimal(15, 2) @map("pension_ee")
   pensionER       Decimal   @db.Decimal(15, 2) @map("pension_er")
   tevetLevy       Decimal   @db.Decimal(15, 2) @default(0) @map("tevet_levy")
+  fringeBenefitBase Decimal @db.Decimal(15, 2) @default(0) @map("fringe_benefit_base")
+  fringeBenefitTax  Decimal @db.Decimal(15, 2) @default(0) @map("fringe_benefit_tax")
+  fbtSnapshot     Json?     @map("fbt_snapshot")
   otherDeductions Decimal   @db.Decimal(15, 2) @default(0) @map("other_deductions")
   totalDeductions Decimal   @db.Decimal(15, 2) @map("total_deductions")
   netPay          Decimal   @db.Decimal(15, 2) @map("net_pay")
@@ -78,6 +100,8 @@ model PayrollRecord {
   runDate         DateTime  @default(now()) @map("run_date")
   runBy           String    @map("run_by")
   status          String    @default("Saved") @map("status")
+
+  fringeBenefits  FringeBenefit[]
 
   @@map("payroll_records")
   @@index([payrollPeriod])

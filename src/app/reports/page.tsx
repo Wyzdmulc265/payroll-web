@@ -40,15 +40,16 @@ export default function ReportsPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const currentYear = new Date().getFullYear();
+  const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
   const fetchPeriods = async () => {
     try {
       const res = await fetch('/api/dashboard');
       const data = await res.json();
       if (data.success && data.data.periods) {
         setPeriods(data.data.periods);
-        if (data.data.periods.length > 0 && !selectedPeriod) {
-          setSelectedPeriod(data.data.periods[0]);
-        }
+        setSelectedPeriod((prev) => prev || data.data.periods[0] || suggestedPeriod);
       }
     } catch (error) {
       console.error('Failed to fetch periods:', error);
@@ -197,10 +198,26 @@ export default function ReportsPage() {
                 onChange={(e) => setSelectedPeriod(e.target.value)}
                 className="input"
               >
+                {selectedPeriod && !periods.includes(selectedPeriod) && (
+                  <option value={selectedPeriod}>{selectedPeriod}</option>
+                )}
                 {periods.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
+              <input
+                type="month"
+                aria-label="Pick a new period (YYYY-MM)"
+                title="Pick a new period (YYYY-MM)"
+                value={selectedPeriod}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setSelectedPeriod(v);
+                  setPeriods((prev) => (prev.includes(v) ? prev : [v, ...prev]));
+                }}
+                className="input mt-2"
+              />
             </div>
             <div>
               <label className="label">Department</label>

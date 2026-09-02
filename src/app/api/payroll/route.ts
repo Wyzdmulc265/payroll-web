@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma, { Prisma } from '@/lib/prisma';
 import { calculatePayroll, PayrollInput, buildStatutoryConfigFromSettings, selectEffectiveSettings, getWorkingDaysInMonth } from '@/lib/payroll-engine';
+import { calculateEmployerFBT, FringeBenefitInput as FBTInput } from '@/lib/fbt-engine';
 import { z } from 'zod';
 
 const runPayrollSchema = z.object({
@@ -15,6 +16,26 @@ const runPayrollSchema = z.object({
      otherEarnings: z.number().nonnegative().default(0),
      otherDeductions: z.number().nonnegative().default(0),
    })).optional(),
+   fringeBenefitData: z.array(z.object({
+     employeeId: z.string(),
+     benefits: z.array(z.object({
+       type: z.string(),
+       description: z.string().optional(),
+       paymentMethod: z.string().optional(),
+       amount: z.number().nonnegative().default(0),
+       employeeContribution: z.number().nonnegative().default(0).optional(),
+       effectiveFrom: z.string(),
+       effectiveTo: z.string().optional(),
+       originalCost: z.number().nonnegative().default(0).optional(),
+       furnished: z.boolean().optional(),
+       ownershipType: z.enum(['EMPLOYER_OWNED', 'RENTED']).optional(),
+       employerRentalCost: z.number().nonnegative().default(0).optional(),
+       openMarketRentalValue: z.number().nonnegative().default(0).optional(),
+       benchmarkInterestRate: z.number().nonnegative().default(0).optional(),
+       employerInterestRate: z.number().nonnegative().default(0).optional(),
+       principalAmount: z.number().nonnegative().default(0).optional(),
+     })).optional(),
+   })).optional(),
  });
 
 export async function POST(request: NextRequest) {
@@ -22,7 +43,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = runPayrollSchema.parse(body);
 
-    const { payrollPeriod, employeeIds, overtimeData } = validatedData;
+    const { payrollPeriod, employeeIds, overtimeData, fringeBenefitData } = validatedData;
 // Load statutory + payroll config from Settings as of the END of the selected
     // period (falls back to defaults). This makes historical runs use the rates
     // that were effective during that period, not whatever is current today.
@@ -36,6 +57,23 @@ export async function POST(request: NextRequest) {
       periodEnd
     );
     const config = buildStatutoryConfigFromSettings(configMap);
+
+    // Build fringe benefit lookup by employeeId
+    const fbtMap = new Map<string, FBTInput[]>();
+    if (fringeBenefitData) {
+      for (const fb of fringeBenefitData) {
+        if (!fbtMap.has(fb.employeeId)) {
+          fbtMap.set(fb.employeeId, []);
+        }
+        for (const b of fb.benefits ?? []) {
+          fbtMap.get(fb.employeeId)!.push({
+            ...b,
+            effectiveFrom: new Date(b.effectiveFrom),
+            effectiveTo: b.effectiveTo ? new Date(b.effectiveTo) : undefined,
+          } as FBTInput);
+        }
+      }
+    }
 
     // Get employees to process
     const employees = await prisma.employee.findMany({
@@ -88,85 +126,133 @@ export async function POST(request: NextRequest) {
     }
 
 // Process each employee
-     const payrollRecords = [];
-     
-     for (const emp of employees) {
-       const ot = overtimeMap.get(emp.id) || {};
-       
-       const input: PayrollInput = {
-         basicSalary: Number(emp.basicSalary),
-         allowances: Number(emp.allowances),
-         normalOvertimeHours: ot.normalOvertimeHours || 0,
-         publicHolidayOvertimeHours: ot.publicHolidayOvertimeHours || 0,
-         offDayOvertimeHours: ot.offDayOvertimeHours || 0,
-         bonuses: ot.bonuses || 0,
-         otherEarnings: ot.otherEarnings || 0,
-         otherDeductions: ot.otherDeductions || 0,
-       };
+      const payrollRecords: Array<{ record: Prisma.PayrollRecordCreateInput; fbtRows: Prisma.FringeBenefitCreateManyInput[] }> = [];
 
-        const result = calculatePayroll({
-          ...input,
-          // Period-aware overtime: use the actual Mon–Fri day count of this
-          // calendar month rather than the fixed configured constant.
-          workingDaysInPeriod: getWorkingDaysInMonth(year, month),
-        }, config);
+      for (const emp of employees) {
+        const ot = overtimeMap.get(emp.id) || {};
+        const benefits = fbtMap.get(emp.id) ?? [];
+        const fbtResult = calculateEmployerFBT(benefits, config.fringeBenefitTaxRate, emp.id, payrollPeriod);
 
-       payrollRecords.push({
-         payrollPeriod,
-         periodStart,
-         periodEnd,
-         employeeId: emp.id,
-         department: emp.department,
-         position: emp.position,
-         basicSalary: result.basicSalary,
-         allowances: result.allowances,
-         normalOvertimeHours: result.normalOvertimeHours,
-         publicHolidayOvertimeHours: result.publicHolidayOvertimeHours,
-         offDayOvertimeHours: result.offDayOvertimeHours,
-         overtimePay: result.overtimePay,
-         bonuses: result.bonuses,
-         otherEarnings: result.otherEarnings,
-         grossEarnings: result.grossEarnings,
-         paye: result.paye,
-         pensionEE: result.pensionEE,
-         pensionER: result.pensionER,
-         tevetLevy: result.tevetLevy,
-         otherDeductions: result.otherDeductions,
-         totalDeductions: result.totalDeductions,
-         netPay: result.netPay,
-         employerCost: result.employerCost,
-         runBy: 'system', // TODO: get from auth session
-         status: 'Saved',
-         // Snapshot the exact statutory config used, so historical payslips
-         // remain reproducible/auditable after settings change.
-         configSnapshot: {
-           taxBands: config.taxBands,
-           pensionEEPercent: config.pensionEEPercent,
-           pensionERPercent: config.pensionERPercent,
-           maxPensionableIncome: config.maxPensionableIncome,
-           tevetLevyPercent: config.tevetLevyPercent,
+        const input: PayrollInput = {
+          basicSalary: Number(emp.basicSalary),
+          allowances: Number(emp.allowances),
+          normalOvertimeHours: ot.normalOvertimeHours || 0,
+          publicHolidayOvertimeHours: ot.publicHolidayOvertimeHours || 0,
+          offDayOvertimeHours: ot.offDayOvertimeHours || 0,
+          bonuses: ot.bonuses || 0,
+          otherEarnings: ot.otherEarnings || 0,
+          otherDeductions: ot.otherDeductions || 0,
+          fringeBenefits: benefits,
+        };
+
+         const result = calculatePayroll({
+           ...input,
            workingDaysInPeriod: getWorkingDaysInMonth(year, month),
-           currency: config.currency,
-         },
-       });
+         }, config);
+
+        const fbtRows: Prisma.FringeBenefitCreateManyInput[] = fbtResult.benefits
+          .filter(b => b.classification === 'FBT')
+          .map(b => ({
+            payrollRecordId: '', // placeholder
+            type: b.input.type,
+            description: b.input.description ?? null,
+            amount: b.input.amount,
+            taxableValue: b.selectedTaxableValue,
+          }));
+
+        payrollRecords.push({
+          record: {
+            payrollPeriod,
+            periodStart,
+            periodEnd,
+            employee: { connect: { id: emp.id } },
+            department: emp.department,
+            position: emp.position,
+            basicSalary: result.basicSalary,
+            allowances: result.allowances,
+            normalOvertimeHours: result.normalOvertimeHours,
+            publicHolidayOvertimeHours: result.publicHolidayOvertimeHours,
+            offDayOvertimeHours: result.offDayOvertimeHours,
+            overtimePay: result.overtimePay,
+            bonuses: result.bonuses,
+            otherEarnings: result.otherEarnings,
+            grossEarnings: result.grossEarnings,
+            paye: result.paye,
+            pensionEE: result.pensionEE,
+            pensionER: result.pensionER,
+            tevetLevy: result.tevetLevy,
+            fringeBenefitBase: result.fringeBenefitBase,
+            fringeBenefitTax: result.fringeBenefitTax,
+            otherDeductions: result.otherDeductions,
+            totalDeductions: result.totalDeductions,
+            netPay: result.netPay,
+            employerCost: result.employerCost,
+            runBy: 'system',
+            status: 'Saved',
+            configSnapshot: JSON.parse(JSON.stringify({
+              taxBands: config.taxBands.map(b => ({ ...b })),
+              pensionEEPercent: config.pensionEEPercent,
+              pensionERPercent: config.pensionERPercent,
+              maxPensionableIncome: config.maxPensionableIncome,
+              tevetLevyPercent: config.tevetLevyPercent,
+              fringeBenefitTaxRate: config.fringeBenefitTaxRate,
+              workingDaysInPeriod: getWorkingDaysInMonth(year, month),
+              currency: config.currency,
+            })),
+            fbtSnapshot: JSON.parse(JSON.stringify({
+              totalTaxableValue: fbtResult.totalTaxableValue,
+              fbtRate: fbtResult.fbtRate,
+              fringeBenefitsTax: fbtResult.fringeBenefitsTax,
+              benefits: fbtResult.benefits.map(b => ({
+                type: String(b.input.type),
+                classification: b.classification,
+                selectedTaxableValue: b.selectedTaxableValue,
+                ruleUsed: b.ruleUsed,
+                auditTrail: b.auditTrail.map(a => ({
+                  rule: a.rule,
+                  source: a.source,
+                  effectiveFrom: a.effectiveFrom.toISOString(),
+                  formula: a.formula,
+                  inputs: a.inputs,
+                  result: a.result,
+                })),
+              })),
+            })),
+          },
+          fbtRows,
+        });
+      }
+
+     // Create payroll records + fringe benefits + audit log in a transaction.
+     const createdRecords = await prisma.$transaction(
+       payrollRecords.map(pr => prisma.payrollRecord.create({
+         data: pr.record,
+         include: { employee: true },
+       }))
+     );
+
+      const fringeBenefitCreatePromises: Promise<Prisma.BatchPayload>[] = [];
+     for (let i = 0; i < createdRecords.length; i++) {
+       const recordId = createdRecords[i].id;
+       const rows = payrollRecords[i].fbtRows.map(r => ({ ...r, payrollRecordId: recordId }));
+       if (rows.length > 0) {
+         fringeBenefitCreatePromises.push(prisma.fringeBenefit.createMany({ data: rows }));
+       }
+     }
+     if (fringeBenefitCreatePromises.length > 0) {
+       await Promise.all(fringeBenefitCreatePromises);
      }
 
-    // Bulk create payroll records + audit log atomically.
-    await prisma.$transaction([
-      prisma.payrollRecord.createMany({
-        data: payrollRecords,
-      }),
-      prisma.auditLog.create({
-        data: {
-          user: 'system',
-          action: 'PAYROLL_RUN',
-          entityType: 'Payroll',
-          entityId: payrollPeriod,
-          description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
-          newValue: JSON.stringify({ period: payrollPeriod, count: employees.length }),
-        },
-      }),
-    ]);
+     await prisma.auditLog.create({
+       data: {
+         user: 'system',
+         action: 'PAYROLL_RUN',
+         entityType: 'Payroll',
+         entityId: payrollPeriod,
+         description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
+         newValue: JSON.stringify({ period: payrollPeriod, count: employees.length }),
+       },
+     });
 
     return NextResponse.json({
       success: true,

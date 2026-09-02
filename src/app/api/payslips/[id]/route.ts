@@ -26,6 +26,7 @@ export async function GET(
       },
       include: {
         employee: true,
+        fringeBenefits: true,
       },
     });
 
@@ -90,7 +91,18 @@ export async function GET(
       // Employer Contributions
       pensionER: Number(payrollRecord.pensionER),
       tevetLevy: Number(payrollRecord.tevetLevy),
+      fringeBenefitBase: Number(payrollRecord.fringeBenefitBase),
+      fringeBenefitTax: Number(payrollRecord.fringeBenefitTax),
       employerCost: Number(payrollRecord.employerCost),
+
+      fbtSummary: payrollRecord.fbtSnapshot
+        ? {
+            totalTaxableValue: (payrollRecord.fbtSnapshot as Record<string, unknown>).totalTaxableValue,
+            fbtRate: (payrollRecord.fbtSnapshot as Record<string, unknown>).fbtRate,
+            fringeBenefitsTax: (payrollRecord.fbtSnapshot as Record<string, unknown>).fringeBenefitsTax,
+            benefits: (payrollRecord.fbtSnapshot as Record<string, unknown>).benefits,
+          }
+        : null,
 
       // Formatted values
       formatted: {
@@ -107,6 +119,8 @@ export async function GET(
         netPay: formatCurrency(Number(payrollRecord.netPay)),
         pensionER: formatCurrency(Number(payrollRecord.pensionER)),
         tevetLevy: formatCurrency(Number(payrollRecord.tevetLevy)),
+        fringeBenefitBase: formatCurrency(Number(payrollRecord.fringeBenefitBase)),
+        fringeBenefitTax: formatCurrency(Number(payrollRecord.fringeBenefitTax)),
         employerCost: formatCurrency(Number(payrollRecord.employerCost)),
       },
     };
