@@ -12,8 +12,38 @@ This document lists every HTTP route exposed by WizTech Payroll Web.
 - All money is returned as **JS `number`**, not string — the routes
   `Number()`-coerce Prisma `Decimal` values at the boundary.
 - All write paths emit an `AuditLog` row.
-- **Auth is not yet wired** — every route is currently public. See
-  [`IMPROVEMENTS.md`](./IMPROVEMENTS.md#1).
+- Core API routes require an active session cookie. Route permissions return `401`
+  for missing/invalid sessions and `403` for insufficient role permissions.
+- Business-owned queries are scoped from the authenticated user's `businessId`;
+  callers cannot supply a business ID to override that scope.
+
+## Authentication
+
+### `POST /api/auth/login`
+
+Accepts `{ "email": "user@example.com", "password": "StrongPass1" }`, creates
+a one-day HttpOnly session cookie, and returns safe user identity fields. Five
+attempts per 15-minute window are allowed per client key; further attempts return
+`429` with `Retry-After`.
+
+### `POST /api/auth/logout`
+
+Invalidates the current server-side session and clears the session cookie.
+
+### `GET /api/auth/me`
+
+Returns the authenticated user's `id`, `email`, `role`, `status`, and `businessId`.
+
+### `POST /api/auth/forgot-password`
+
+Accepts `{ "email": "user@example.com" }` and always returns a generic success
+message when the input is valid. Reset tokens expire after one hour and are stored
+hashed. Email delivery remains a deployment follow-up.
+
+### `POST /api/auth/reset-password`
+
+Accepts `{ "token": "...", "newPassword": "StrongPass1" }`, consumes a pending
+token, updates the password, and invalidates all existing sessions.
 
 ---
 

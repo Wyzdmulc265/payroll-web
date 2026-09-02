@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.READ_PAYROLL);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period');
     const employeeId = searchParams.get('employeeId');
@@ -15,7 +21,7 @@ export async function GET(request: NextRequest) {
     }
 
     const payrollRecord = await prisma.payrollRecord.findFirst({
-      where: { payrollPeriod: period, employeeId },
+      where: { payrollPeriod: period, employeeId, businessId: session.user.businessId },
       include: {
         employee: {
           select: { employeeId: true, firstName: true, lastName: true, department: true, position: true },

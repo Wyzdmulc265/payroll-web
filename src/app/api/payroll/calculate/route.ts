@@ -3,6 +3,8 @@ import { calculatePayroll, buildStatutoryConfigFromSettings, selectEffectiveSett
 import { FringeBenefitType, BenefitPaymentMethod } from '@/lib/fbt-engine';
 import prisma from '@/lib/prisma';
 import { z } from 'zod';
+import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
+import { getRequestIp, logAuditEvent } from '@/lib/audit';
 
 const payrollInputSchema = z.object({
    basicSalary: z.number().positive(),
@@ -37,6 +39,11 @@ const payrollInputSchema = z.object({
 
 export async function POST(request: NextRequest) {
    try {
+  const session = await getCurrentUser(request);
+  if (!session) return unauthorized();
+  const denied = requirePermission(session.user, Permission.RUN_PAYROLL);
+  if (denied) return denied;
+  if (!session.user.businessId) return unauthorized();
      const body = await request.json();
      const validatedInput = payrollInputSchema.parse(body);
      const { payrollPeriod, fringeBenefits, ...input } = validatedInput;
@@ -57,7 +64,7 @@ export async function POST(request: NextRequest) {
      const periodEnd = new Date(year, month, 0);
 
      // Load statutory config from Settings (falls back to defaults).
-     const configSettings = await prisma.settings.findMany();
+    const configSettings = await prisma.settings.findMany({ where: { businessId: session.user.businessId } });
      const configMap = selectEffectiveSettings(
        configSettings.map((s) => ({ key: s.key, value: s.value, effectiveFrom: s.effectiveFrom })),
        periodEnd
@@ -70,6 +77,16 @@ const result = calculatePayroll({
         // Period-aware overtime: actual Mon–Fri day count of the month.
         workingDaysInPeriod: getWorkingDaysInMonth(year, month),
       }, config, configMap);
+
+     await logAuditEvent({
+       action: 'PAYROLL_CALCULATED',
+       entityType: 'Payroll',
+       entityId: payrollPeriod ?? undefined,
+       userId: session.user.id,
+       businessId: session.user.businessId,
+       description: 'Payroll preview calculated',
+       ipAddress: getRequestIp(request),
+     });
 
      return NextResponse.json({
        success: true,

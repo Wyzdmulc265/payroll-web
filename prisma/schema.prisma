@@ -16,9 +16,99 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  PAYROLL_OPERATOR
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BusinessStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PasswordResetStatus {
+  PENDING
+  USED
+  EXPIRED
+}
+
+model Business {
+  id        String         @id @default(cuid())
+  name      String
+  status    BusinessStatus @default(ACTIVE)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  users          User[]
+  employees      Employee[]
+  payrollRecords PayrollRecord[]
+  settings       Settings[]
+  auditLogs      AuditLog[]
+
+  @@map("businesses")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  businessId   String?    @map("business_id")
+  business     Business?  @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  sessions       Session[]
+  auditLogs      AuditLog[]      @relation("AuditLogUser")
+  passwordResets PasswordReset[]
+  payrollRecords PayrollRecord[] @relation("PayrollRunUser")
+
+  @@index([businessId])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordReset {
+  id        String              @id @default(cuid())
+  userId    String              @map("user_id")
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String              @unique @map("token_hash")
+  expiresAt DateTime            @map("expires_at")
+  createdAt DateTime            @default(now()) @map("created_at")
+  status    PasswordResetStatus @default(PENDING)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_resets")
+}
+
 model Employee {
   id                String    @id @default(cuid())
   employeeId        String    @unique @map("employee_id") // EMP001
+  businessId        String?   @map("business_id")
+  business          Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
   firstName         String    @map("first_name")
   lastName          String    @map("last_name")
   fullName          String?   @map("full_name")
@@ -28,9 +118,9 @@ model Employee {
   position          String
   employmentDate    DateTime  @map("employment_date")
   employmentType    String    @default("Permanent") @map("employment_type")
-  basicSalary       Decimal   @db.Decimal(15, 2) @map("basic_salary")
+  basicSalary       Decimal   @map("basic_salary") @db.Decimal(15, 2)
   salaryFrequency   String    @default("Monthly") @map("salary_frequency")
-  allowances        Decimal   @db.Decimal(15, 2) @default(0) @map("allowances")
+  allowances        Decimal   @default(0) @map("allowances") @db.Decimal(15, 2)
   bankName          String?   @map("bank_name")
   accountNumber     String?   @map("account_number")
   paymentMethod     String    @default("Bank Transfer") @map("payment_method")
@@ -42,103 +132,118 @@ model Employee {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  payrollRecords    PayrollRecord[]
-  auditLogs         AuditLog[]
+  payrollRecords PayrollRecord[]
+  auditLogs      AuditLog[]
 
-  @@map("employees")
+  @@index([businessId])
   @@index([department])
   @@index([employmentStatus])
   @@index([isActive])
+  @@map("employees")
 }
 
 model FringeBenefit {
-  id              String    @id @default(cuid())
-  payrollRecordId String    @map("payroll_record_id")
+  id              String        @id @default(cuid())
+  payrollRecordId String        @map("payroll_record_id")
   payrollRecord   PayrollRecord @relation(fields: [payrollRecordId], references: [id], onDelete: Cascade)
 
-  type            String
-  description     String?
-  amount          Decimal   @db.Decimal(15, 2)
-  taxableValue    Decimal   @db.Decimal(15, 2) @default(0) @map("taxable_value")
+  type         String
+  description  String?
+  amount       Decimal @db.Decimal(15, 2)
+  taxableValue Decimal @default(0) @map("taxable_value") @db.Decimal(15, 2)
 
-  createdAt       DateTime  @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  @@map("fringe_benefits")
   @@index([payrollRecordId])
+  @@map("fringe_benefits")
 }
 
 model PayrollRecord {
-  id              String    @id @default(cuid())
-  payrollPeriod   String    @map("payroll_period") // 2026-08
-  periodStart     DateTime  @map("period_start")
-  periodEnd       DateTime  @map("period_end")
-  employeeId      String    @map("employee_id")
-  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  department      String
-  position        String
-  basicSalary     Decimal   @db.Decimal(15, 2) @map("basic_salary")
-  allowances      Decimal   @db.Decimal(15, 2) @map("allowances")
-  normalOvertimeHours     Decimal @db.Decimal(8, 2) @default(0) @map("normal_overtime_hours")
-  publicHolidayOvertimeHours Decimal @db.Decimal(8, 2) @default(0) @map("public_holiday_overtime_hours")
-  offDayOvertimeHours    Decimal @db.Decimal(8, 2) @default(0) @map("off_day_overtime_hours")
-  overtimePay     Decimal   @db.Decimal(15, 2) @default(0) @map("overtime_pay")
-  bonuses         Decimal   @db.Decimal(15, 2) @default(0) @map("bonuses")
-  otherEarnings   Decimal   @db.Decimal(15, 2) @default(0) @map("other_earnings")
-  grossEarnings   Decimal   @db.Decimal(15, 2) @map("gross_earnings")
-  paye            Decimal   @db.Decimal(15, 2) @map("paye")
-  pensionEE       Decimal   @db.Decimal(15, 2) @map("pension_ee")
-  pensionER       Decimal   @db.Decimal(15, 2) @map("pension_er")
-  tevetLevy       Decimal   @db.Decimal(15, 2) @default(0) @map("tevet_levy")
-  fringeBenefitBase Decimal @db.Decimal(15, 2) @default(0) @map("fringe_benefit_base")
-  fringeBenefitTax  Decimal @db.Decimal(15, 2) @default(0) @map("fringe_benefit_tax")
-  fbtSnapshot     Json?     @map("fbt_snapshot")
-  otherDeductions Decimal   @db.Decimal(15, 2) @default(0) @map("other_deductions")
-  totalDeductions Decimal   @db.Decimal(15, 2) @map("total_deductions")
-  netPay          Decimal   @db.Decimal(15, 2) @map("net_pay")
-  employerCost    Decimal   @db.Decimal(15, 2) @map("employer_cost")
-  configSnapshot  Json?     @map("config_snapshot") // statutory config used for this run (audit)
-  runDate         DateTime  @default(now()) @map("run_date")
-  runBy           String    @map("run_by")
-  status          String    @default("Saved") @map("status")
+  id                         String    @id @default(cuid())
+  payrollPeriod              String    @map("payroll_period") // 2026-08
+  periodStart                DateTime  @map("period_start")
+  periodEnd                  DateTime  @map("period_end")
+  employeeId                 String    @map("employee_id")
+  employee                   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  businessId                 String?   @map("business_id")
+  business                   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  department                 String
+  position                   String
+  basicSalary                Decimal   @map("basic_salary") @db.Decimal(15, 2)
+  allowances                 Decimal   @map("allowances") @db.Decimal(15, 2)
+  normalOvertimeHours        Decimal   @default(0) @map("normal_overtime_hours") @db.Decimal(8, 2)
+  publicHolidayOvertimeHours Decimal   @default(0) @map("public_holiday_overtime_hours") @db.Decimal(8, 2)
+  offDayOvertimeHours        Decimal   @default(0) @map("off_day_overtime_hours") @db.Decimal(8, 2)
+  overtimePay                Decimal   @default(0) @map("overtime_pay") @db.Decimal(15, 2)
+  bonuses                    Decimal   @default(0) @map("bonuses") @db.Decimal(15, 2)
+  otherEarnings              Decimal   @default(0) @map("other_earnings") @db.Decimal(15, 2)
+  grossEarnings              Decimal   @map("gross_earnings") @db.Decimal(15, 2)
+  paye                       Decimal   @map("paye") @db.Decimal(15, 2)
+  pensionEE                  Decimal   @map("pension_ee") @db.Decimal(15, 2)
+  pensionER                  Decimal   @map("pension_er") @db.Decimal(15, 2)
+  tevetLevy                  Decimal   @default(0) @map("tevet_levy") @db.Decimal(15, 2)
+  fringeBenefitBase          Decimal   @default(0) @map("fringe_benefit_base") @db.Decimal(15, 2)
+  fringeBenefitTax           Decimal   @default(0) @map("fringe_benefit_tax") @db.Decimal(15, 2)
+  fbtSnapshot                Json?     @map("fbt_snapshot")
+  otherDeductions            Decimal   @default(0) @map("other_deductions") @db.Decimal(15, 2)
+  totalDeductions            Decimal   @map("total_deductions") @db.Decimal(15, 2)
+  netPay                     Decimal   @map("net_pay") @db.Decimal(15, 2)
+  employerCost               Decimal   @map("employer_cost") @db.Decimal(15, 2)
+  configSnapshot             Json?     @map("config_snapshot") // statutory config used for this run (audit)
+  runDate                    DateTime  @default(now()) @map("run_date")
+  runByUserId                String?   @map("run_by_user_id")
+  runByUser                  User?     @relation("PayrollRunUser", fields: [runByUserId], references: [id], onDelete: SetNull)
+  status                     String    @default("Saved") @map("status")
 
-  fringeBenefits  FringeBenefit[]
+  fringeBenefits FringeBenefit[]
 
-  @@map("payroll_records")
+  @@unique([payrollPeriod, employeeId])
   @@index([payrollPeriod])
   @@index([employeeId])
-  @@unique([payrollPeriod, employeeId])
+  @@index([businessId])
+  @@index([runByUserId])
+  @@map("payroll_records")
 }
 
 model AuditLog {
-  id          String   @id @default(cuid())
-  timestamp   DateTime @default(now())
-  user        String
+  id          String    @id @default(cuid())
+  timestamp   DateTime  @default(now())
+  userId      String?   @map("user_id")
+  user        User?     @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+  businessId  String?   @map("business_id")
+  business    Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
   action      String
-  entityType  String   @map("entity_type")
-  entityId    String   @map("entity_id")
+  entityType  String    @map("entity_type")
+  entityId    String?   @map("entity_id")
   description String
-  oldValue    String?  @map("old_value")
-  newValue    String?  @map("new_value")
-  ipAddress   String?  @map("ip_address")
-  employeeId  String?  @map("employee_id")
+  oldValue    String?   @map("old_value")
+  newValue    String?   @map("new_value")
+  ipAddress   String?   @map("ip_address")
+  employeeId  String?   @map("employee_id")
   employee    Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
-  @@map("audit_logs")
   @@index([entityType, entityId])
   @@index([timestamp])
+  @@index([businessId, timestamp])
+  @@index([userId])
   @@index([employeeId])
+  @@map("audit_logs")
 }
 
 model Settings {
-  id          String   @id @default(cuid())
-  key         String   @unique
-  value       String
-  description String?
-  effectiveFrom DateTime @map("effective_from")
-  category    String   // COMPANY, PAYROLL, STATUTORY, SYSTEM
+  id            String    @id @default(cuid())
+  key           String
+  value         String
+  description   String?
+  effectiveFrom DateTime  @map("effective_from")
+  category      String // COMPANY, PAYROLL, STATUTORY, SYSTEM
+  businessId    String?   @map("business_id")
+  business      Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
-  @@map("settings")
+  @@unique([key, businessId])
   @@index([category])
+  @@index([businessId])
+  @@map("settings")
 }
 
 // Malawi Statutory Configuration (stored as settings with category=STATUTORY)

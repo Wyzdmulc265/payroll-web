@@ -127,12 +127,12 @@ describe('calculatePayroll', () => {
      );
 
      expect(result.grossEarnings).toBe(1068182);
-     expect(result.paye).toBe(269455)  // 898182 * 0.30 = 269454.6 -> 269455;
+     expect(result.paye).toBe(269454)  // 898181 * 0.30 = 269454.3 -> 269454
      expect(result.pensionEE).toBe(50000);
      expect(result.pensionER).toBe(100000);
      expect(result.tevetLevy).toBe(10682);
-     expect(result.totalDeductions).toBe(319455);
-     expect(result.netPay).toBe(748727);
+     expect(result.totalDeductions).toBe(319454);
+     expect(result.netPay).toBe(748728);
      expect(result.employerCost).toBe(1178864);
      expect(result.fringeBenefitBase).toBe(0);
      expect(result.fringeBenefitTax).toBe(0);
@@ -164,7 +164,7 @@ describe('calculatePayroll', () => {
      expect(result.fringeBenefitBase).toBe(4_500_000);
      expect(result.fringeBenefitTax).toBe(1_350_000);
      expect(result.employerCost).toBe(1178864 + 1350000);
-     expect(result.netPay).toBe(748727);
+     expect(result.netPay).toBe(748728);
      expect(result.fbtResult.liabilityType).toBe('EMPLOYER');
    });
  });
@@ -266,3 +266,6 @@ describe('buildStatutoryConfigFromSettings', () => {
      expect(calculatePAYE(200000, cfg)).toBe(7500);
    });
  });
+
+
+

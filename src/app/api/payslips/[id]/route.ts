@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { formatCurrency } from '@/lib/payroll-engine';
+import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.READ_PAYROLL);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const payrollPeriod = searchParams.get('period');
@@ -23,6 +29,7 @@ export async function GET(
       where: {
         payrollPeriod,
         employeeId: id,
+        businessId: session.user.businessId,
       },
       include: {
         employee: true,
@@ -39,7 +46,7 @@ export async function GET(
 
     // Get company settings
     const settings = await prisma.settings.findMany({
-      where: { category: 'COMPANY' },
+      where: { category: 'COMPANY', businessId: session.user.businessId },
     });
     const settingsMap = Object.fromEntries(settings.map(s => [s.key, s.value]));
 

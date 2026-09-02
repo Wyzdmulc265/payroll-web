@@ -19,6 +19,7 @@
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "@react-pdf/renderer": "^4.1.6",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "decimal.js": "^10.6.0",
     "lucide-react": "^0.446.0",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/pg": "^8.11.0",
     "@types/react": "^19",

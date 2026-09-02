@@ -4,6 +4,8 @@
  * Used by both API routes and frontend calculations
  */
 
+import { calculateEmployerFBT } from './fbt-engine';
+
 export interface MalawiTaxBand {
   band: number;
   fromAmount: number;
@@ -80,77 +82,77 @@ export const DEFAULT_STATUTORY_CONFIG: StatutoryConfig = {
   *   statutory.overtime_normal_rate_multiplier, statutory.overtime_public_holiday_rate_multiplier, statutory.overtime_off_day_rate_multiplier
   *   working_hours_per_day, working_days_per_month, currency, decimal_places
   */
-export function buildStatutoryConfigFromSettings(
-  settingsMap: Record<string, string>,
-  base: StatutoryConfig = DEFAULT_STATUTORY_CONFIG
-): StatutoryConfig {
-  const num = (key: string, fallback: number): number => {
-    const raw = settingsMap[key];
-    const parsed = raw === undefined || raw === '' ? NaN : Number(raw);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
+ export function buildStatutoryConfigFromSettings(
+   settingsMap: Record<string, string>,
+   base: StatutoryConfig = DEFAULT_STATUTORY_CONFIG
+ ): StatutoryConfig {
+   const num = (key: string, fallback: number): number => {
+     const raw = settingsMap[key];
+     const parsed = raw === undefined || raw === '' ? NaN : Number(raw);
+     return Number.isFinite(parsed) ? parsed : fallback;
+   };
 
-  // Determine band count dynamically: scan settingsMap for the highest PAYE
-  // band index present. If none found, fall back to the base config count.
-  let bandCount = base.taxBands.length;
-  for (const key of Object.keys(settingsMap)) {
-    const m = key.match(/^statutory\.paye_band_(\d+)_(from|to|rate)$/);
-    if (m) {
-      const idx = parseInt(m[1], 10);
-      if (idx > bandCount) bandCount = idx;
-    }
-  }
+   // Determine band count dynamically: scan settingsMap for the highest PAYE
+   // band index present. If none found, fall back to the base config count.
+   let bandCount = base.taxBands.length;
+   for (const key of Object.keys(settingsMap)) {
+     const m = key.match(/^statutory\.paye_band_(\d+)_(from|to|rate)$/);
+     if (m) {
+       const idx = parseInt(m[1], 10);
+       if (idx > bandCount) bandCount = idx;
+     }
+   }
 
-  const baseBand = (i: number): MalawiTaxBand =>
-    base.taxBands[i - 1] ?? {
-      band: i,
-      fromAmount: Number.MAX_SAFE_INTEGER,
-      toAmount: Number.MAX_SAFE_INTEGER,
-      ratePercent: 0,
-      fixedAmount: 0,
-      cumulativeTax: 0,
-    };
+   const baseBand = (i: number): MalawiTaxBand =>
+     base.taxBands[i - 1] ?? {
+       band: i,
+       fromAmount: Number.MAX_SAFE_INTEGER,
+       toAmount: Number.MAX_SAFE_INTEGER,
+       ratePercent: 0,
+       fixedAmount: 0,
+       cumulativeTax: 0,
+     };
 
-  // Rebuild PAYE bands from settings (falling back to base bands).
-  const bands: MalawiTaxBand[] = [];
-  for (let i = 1; i <= bandCount; i++) {
-    bands.push({
-      band: i,
-      fromAmount: num(`statutory.paye_band_${i}_from`, baseBand(i).fromAmount),
-      toAmount: num(`statutory.paye_band_${i}_to`, baseBand(i).toAmount),
-      ratePercent: num(`statutory.paye_band_${i}_rate`, baseBand(i).ratePercent),
-      fixedAmount: baseBand(i).fixedAmount,
-      cumulativeTax: 0,
-    });
-  }
+   // Rebuild PAYE bands from settings (falling back to base bands).
+   const bands: MalawiTaxBand[] = [];
+   for (let i = 1; i <= bandCount; i++) {
+     bands.push({
+       band: i,
+       fromAmount: num(`statutory.paye_band_${i}_from`, baseBand(i).fromAmount),
+       toAmount: num(`statutory.paye_band_${i}_to`, baseBand(i).toAmount),
+       ratePercent: num(`statutory.paye_band_${i}_rate`, baseBand(i).ratePercent),
+       fixedAmount: baseBand(i).fixedAmount,
+       cumulativeTax: 0,
+     });
+   }
 
-  // Derive each band's cumulative tax — the tax owed on all income up to the
-  // band's start. cumTax(n) = cumTax(n-1) + rate(n-1) * (size of band n-1).
-  for (let i = 1; i < bands.length; i++) {
-    const prev = bands[i - 1];
-    bands[i].cumulativeTax = Math.round(
-      bands[i - 1].cumulativeTax + (prev.ratePercent / 100) * (prev.toAmount - prev.fromAmount + 1)
-    );
-  }
+   // Derive each band's cumulative tax — the tax owed on all income up to the
+   // band's start. cumTax(n) = cumTax(n-1) + rate(n-1) * (size of band n-1).
+   for (let i = 1; i < bands.length; i++) {
+     const prev = bands[i - 1];
+     bands[i].cumulativeTax = Math.round(
+       bands[i - 1].cumulativeTax + (prev.ratePercent / 100) * (prev.toAmount - prev.fromAmount + 1)
+     );
+   }
 
 return {
-     taxBands: bands,
-     pensionEEPercent: num('statutory.pension_ee_rate', base.pensionEEPercent),
-     pensionERPercent: num('statutory.pension_er_rate', base.pensionERPercent),
-     maxPensionableIncome: num('statutory.max_pensionable_income', base.maxPensionableIncome),
-     tevetLevyPercent: num('statutory.tevet_levy_rate', base.tevetLevyPercent),
-     fringeBenefitTaxRate: num('statutory.fringe_benefit_tax_rate', base.fringeBenefitTaxRate),
-     leaveDaysPerYear: base.leaveDaysPerYear,
-     sickDaysPerYear: base.sickDaysPerYear,
-     workingHoursPerDay: num('working_hours_per_day', base.workingHoursPerDay),
-     workingDaysPerMonth: num('working_days_per_month', base.workingDaysPerMonth),
-     overtimeNormalRateMultiplier: num('statutory.overtime_normal_rate_multiplier', base.overtimeNormalRateMultiplier),
-     overtimePublicHolidayRateMultiplier: num('statutory.overtime_public_holiday_rate_multiplier', base.overtimePublicHolidayRateMultiplier),
-     overtimeOffDayRateMultiplier: num('statutory.overtime_off_day_rate_multiplier', base.overtimeOffDayRateMultiplier),
-     currency: settingsMap['currency'] || base.currency,
-     decimalPlaces: num('decimal_places', base.decimalPlaces),
-   };
-}
+      taxBands: bands,
+      pensionEEPercent: num('statutory.pension_ee_rate', base.pensionEEPercent),
+      pensionERPercent: num('statutory.pension_er_rate', base.pensionERPercent),
+      maxPensionableIncome: num('statutory.max_pensionable_income', base.maxPensionableIncome),
+      tevetLevyPercent: num('statutory.tevet_levy_rate', base.tevetLevyPercent),
+      fringeBenefitTaxRate: num('statutory.fringe_benefit_tax_rate', base.fringeBenefitTaxRate),
+      leaveDaysPerYear: base.leaveDaysPerYear,
+      sickDaysPerYear: base.sickDaysPerYear,
+      workingHoursPerDay: num('working_hours_per_day', base.workingHoursPerDay),
+      workingDaysPerMonth: num('working_days_per_month', base.workingDaysPerMonth),
+      overtimeNormalRateMultiplier: num('statutory.overtime_normal_rate_multiplier', base.overtimeNormalRateMultiplier),
+      overtimePublicHolidayRateMultiplier: num('statutory.overtime_public_holiday_rate_multiplier', base.overtimePublicHolidayRateMultiplier),
+      overtimeOffDayRateMultiplier: num('statutory.overtime_off_day_rate_multiplier', base.overtimeOffDayRateMultiplier),
+      currency: settingsMap['currency'] || base.currency,
+      decimalPlaces: num('decimal_places', base.decimalPlaces),
+    };
+ }
 
 /**
  * Calculate PAYE (Pay As You Earn) tax for Malawi
@@ -209,23 +211,23 @@ export function calculateTEVETLevy(
   * Formula: (normalHours * normalRate + holidayHours * holidayRate + offDayHours * offDayRate) * 
   *          (basicSalary / workingDaysPerMonth / workingHoursPerDay)
   */
-export function calculateOvertimePay(
-   normalHours: number,
-   publicHolidayHours: number,
-   offDayHours: number,
-   basicSalary: number,
-   config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
-): number {
-   if (normalHours <= 0 && publicHolidayHours <= 0 && offDayHours <= 0) return 0;
-   
-   const hourlyRate = basicSalary / config.workingDaysPerMonth / config.workingHoursPerDay;
-   
-   const normalPay = normalHours * config.overtimeNormalRateMultiplier * hourlyRate;
-   const holidayPay = publicHolidayHours * config.overtimePublicHolidayRateMultiplier * hourlyRate;
-   const offDayPay = offDayHours * config.overtimeOffDayRateMultiplier * hourlyRate;
-   
-   return Math.round(normalPay + holidayPay + offDayPay);
- }
+ export function calculateOvertimePay(
+    normalHours: number,
+    publicHolidayHours: number,
+    offDayHours: number,
+    basicSalary: number,
+    config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
+ ): number {
+    if (normalHours <= 0 && publicHolidayHours <= 0 && offDayHours <= 0) return 0;
+    
+    const hourlyRate = basicSalary / config.workingDaysPerMonth / config.workingHoursPerDay;
+    
+    const normalPay = normalHours * config.overtimeNormalRateMultiplier * hourlyRate;
+    const holidayPay = publicHolidayHours * config.overtimePublicHolidayRateMultiplier * hourlyRate;
+    const offDayPay = offDayHours * config.overtimeOffDayRateMultiplier * hourlyRate;
+    
+    return Math.round(normalPay + holidayPay + offDayPay);
+  }
 
 /**
  * Calculate Gross Earnings
@@ -238,7 +240,7 @@ export function calculateGrossEarnings(
   bonuses: number,
   otherEarnings: number
 ): number {
-  return basicSalary + allowances + overtimePay + bonuses + otherEarnings;
+  return Number(basicSalary) + Number(allowances) + Number(overtimePay) + Number(bonuses) + Number(otherEarnings);
 }
 
 /**
@@ -250,7 +252,7 @@ export function calculateTotalDeductions(
   pensionEE: number,
   otherDeductions: number
 ): number {
-  return paye + pensionEE + otherDeductions;
+  return Number(paye) + Number(pensionEE) + Number(otherDeductions);
 }
 
 /**
@@ -273,96 +275,136 @@ export function calculateEmployerCost(
   pensionER: number,
   tevetLevy: number
 ): number {
-  return grossEarnings + pensionER + tevetLevy;
+  return Number(grossEarnings) + Number(pensionER) + Number(tevetLevy);
 }
 
 /**
   * Complete payroll calculation for a single employee
   */
-export interface PayrollInput {
-   basicSalary: number;
-   allowances: number;
-   normalOvertimeHours: number;        // Replaces overtimeHours
-   publicHolidayOvertimeHours: number; // New
-   offDayOvertimeHours: number;        // New
-   bonuses: number;
-   otherEarnings: number;
-   otherDeductions: number;
- }
+ export interface PayrollInput {
+    basicSalary: number;
+    allowances: number;
+    normalOvertimeHours: number;        // Replaces overtimeHours
+    publicHolidayOvertimeHours: number; // New
+    offDayOvertimeHours: number;        // New
+    bonuses: number;
+    otherEarnings: number;
+    otherDeductions: number;
+    fringeBenefits?: import('./fbt-engine').FringeBenefitInput[];
+    workingDaysInPeriod?: number;
+  
+  }
 
-export interface PayrollResult {
-   basicSalary: number;
-   allowances: number;
-   normalOvertimeHours: number;
-   publicHolidayOvertimeHours: number;
-   offDayOvertimeHours: number;
-   overtimePay: number;
-   bonuses: number;
-   otherEarnings: number;
-   grossEarnings: number;
-   paye: number;
-   pensionEE: number;
-   pensionER: number;
-   tevetLevy: number;
-   otherDeductions: number;
-   totalDeductions: number;
-   netPay: number;
-   employerCost: number;
- }
+ export interface PayrollResult {
+    basicSalary: number;
+    allowances: number;
+    normalOvertimeHours: number;
+    publicHolidayOvertimeHours: number;
+    offDayOvertimeHours: number;
+    overtimePay: number;
+    bonuses: number;
+    otherEarnings: number;
+    grossEarnings: number;
+    paye: number;
+    pensionEE: number;
+    pensionER: number;
+    tevetLevy: number;
+    otherDeductions: number;
+    totalDeductions: number;
+    netPay: number;
+    employerCost: number;
+    fringeBenefitBase: number;
+    fringeBenefitTax: number;
+    fbtResult: {
+      totalTaxableValue: number;
+      fringeBenefitsTax: number;
+      liabilityType: 'EMPLOYER';
+    };
+  }
 
-export function calculatePayroll(
-   input: PayrollInput,
-   config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
-settingsMap: Record<string, string> = {}): PayrollResult {
-   // Calculate overtime pay
-   const overtimePay = calculateOvertimePay(
-     input.normalOvertimeHours,
-     input.publicHolidayOvertimeHours,
-     input.offDayOvertimeHours,
-     input.basicSalary,
-     config
-   );
-   
-   // Calculate gross earnings
-   const grossEarnings = calculateGrossEarnings(
-     input.basicSalary,
-     input.allowances,
-     overtimePay,
-     input.bonuses,
-     input.otherEarnings
-   );
-   
-   // Calculate statutory deductions
-   const paye = calculatePAYE(grossEarnings, config);
-   const pensionEE = calculatePensionEE(grossEarnings, config);
-   const pensionER = calculatePensionER(grossEarnings, config);
-   const tevetLevy = calculateTEVETLevy(grossEarnings, config);
-   
-   // Calculate totals
-   const totalDeductions = calculateTotalDeductions(paye, pensionEE, input.otherDeductions);
-   const netPay = calculateNetPay(grossEarnings, totalDeductions);
-   const employerCost = calculateEmployerCost(grossEarnings, pensionER, tevetLevy);
-   
-   return {
-     basicSalary: input.basicSalary,
-     allowances: input.allowances,
-     normalOvertimeHours: input.normalOvertimeHours,
-     publicHolidayOvertimeHours: input.publicHolidayOvertimeHours,
-     offDayOvertimeHours: input.offDayOvertimeHours,
-     overtimePay,
-     bonuses: input.bonuses,
-     otherEarnings: input.otherEarnings,
-     grossEarnings,
-     paye,
-     pensionEE,
-     pensionER,
-     tevetLevy,
-     otherDeductions: input.otherDeductions,
-     totalDeductions,
-     netPay,
-     employerCost,
-   };
- }
+ export function calculatePayroll(
+    input: PayrollInput,
+    config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
+    settingsMap: Record<string, string> = {}): PayrollResult {
+    // Use period-specific working days when provided
+    const overtimeConfig = input.workingDaysInPeriod
+      ? { ...config, workingDaysPerMonth: input.workingDaysInPeriod }
+      : config;
+
+    // Calculate overtime pay
+    const overtimePay = calculateOvertimePay(
+      input.normalOvertimeHours,
+      input.publicHolidayOvertimeHours,
+      input.offDayOvertimeHours,
+      input.basicSalary,
+      overtimeConfig
+    );
+    
+    // Calculate gross earnings
+    const grossEarnings = calculateGrossEarnings(
+      input.basicSalary,
+      input.allowances,
+      overtimePay,
+      input.bonuses,
+      input.otherEarnings
+    );
+    
+    // Calculate statutory deductions
+    const paye = calculatePAYE(grossEarnings, config);
+    const pensionEE = calculatePensionEE(grossEarnings, config);
+    const pensionER = calculatePensionER(grossEarnings, config);
+    const tevetLevy = calculateTEVETLevy(grossEarnings, config);
+    
+    // Calculate totals
+    const totalDeductions = calculateTotalDeductions(paye, pensionEE, input.otherDeductions);
+    const netPay = calculateNetPay(grossEarnings, totalDeductions);
+    const employerCost = calculateEmployerCost(grossEarnings, pensionER, tevetLevy);
+    
+    // Calculate FBT
+    const fringeBenefits = input.fringeBenefits ?? [];
+    let fringeBenefitBase = 0;
+    let fringeBenefitTax = 0;
+    let fbtResult = {
+      totalTaxableValue: 0,
+      fringeBenefitsTax: 0,
+      liabilityType: 'EMPLOYER' as const,
+    };
+    
+    if (fringeBenefits.length > 0) {
+      
+      const fbt = calculateEmployerFBT(fringeBenefits, config.fringeBenefitTaxRate, undefined, undefined, settingsMap);
+      fringeBenefitBase = fbt.totalTaxableValue;
+      fringeBenefitTax = fbt.fringeBenefitsTax;
+      fbtResult = {
+        totalTaxableValue: fbt.totalTaxableValue,
+        fringeBenefitsTax: fbt.fringeBenefitsTax,
+        liabilityType: fbt.liabilityType,
+      };
+    }
+    
+    return {
+      basicSalary: input.basicSalary,
+      allowances: input.allowances,
+      normalOvertimeHours: input.normalOvertimeHours,
+      publicHolidayOvertimeHours: input.publicHolidayOvertimeHours,
+      offDayOvertimeHours: input.offDayOvertimeHours,
+      overtimePay,
+      bonuses: input.bonuses,
+      otherEarnings: input.otherEarnings,
+      grossEarnings,
+      paye,
+      pensionEE,
+      pensionER,
+      tevetLevy,
+      otherDeductions: input.otherDeductions,
+      totalDeductions,
+      netPay,
+      employerCost: employerCost + fringeBenefitTax,
+      fringeBenefitBase,
+      fringeBenefitTax,
+      fbtResult,
+    };
+  }
 
 /**
  * Format currency for display
@@ -387,43 +429,43 @@ export function roundToDecimals(value: number, decimals: number = 2): number {
 /**
   * Validate payroll input
   */
-export function validatePayrollInput(input: PayrollInput): string[] {
-   const errors: string[] = [];
-   
-   if (input.basicSalary <= 0) {
-     errors.push('Basic salary must be greater than zero');
-   }
-   
-   if (input.allowances < 0) {
-     errors.push('Allowances cannot be negative');
-   }
-   
-   if (input.normalOvertimeHours < 0) {
-     errors.push('Normal overtime hours cannot be negative');
-   }
-   
-   if (input.publicHolidayOvertimeHours < 0) {
-     errors.push('Public holiday overtime hours cannot be negative');
-   }
-   
-   if (input.offDayOvertimeHours < 0) {
-     errors.push('Off-day overtime hours cannot be negative');
-   }
-   
-   if (input.bonuses < 0) {
-     errors.push('Bonuses cannot be negative');
-   }
-   
-   if (input.otherEarnings < 0) {
-     errors.push('Other earnings cannot be negative');
-   }
-   
-   if (input.otherDeductions < 0) {
-     errors.push('Other deductions cannot be negative');
-   }
-   
-   return errors;
- }
+ export function validatePayrollInput(input: PayrollInput): string[] {
+    const errors: string[] = [];
+    
+    if (input.basicSalary <= 0) {
+      errors.push('Basic salary must be greater than zero');
+    }
+    
+    if (input.allowances < 0) {
+      errors.push('Allowances cannot be negative');
+    }
+    
+    if (input.normalOvertimeHours < 0) {
+      errors.push('Normal overtime hours cannot be negative');
+    }
+    
+    if (input.publicHolidayOvertimeHours < 0) {
+      errors.push('Public holiday overtime hours cannot be negative');
+    }
+    
+    if (input.offDayOvertimeHours < 0) {
+      errors.push('Off-day overtime hours cannot be negative');
+    }
+    
+    if (input.bonuses < 0) {
+      errors.push('Bonuses cannot be negative');
+    }
+    
+    if (input.otherEarnings < 0) {
+      errors.push('Other earnings cannot be negative');
+    }
+    
+    if (input.otherDeductions < 0) {
+      errors.push('Other deductions cannot be negative');
+    }
+    
+    return errors;
+  }
 
 
 
@@ -431,6 +473,20 @@ export interface SettingRow {
   key: string;
   value: string;
   effectiveFrom?: Date | string | null;
+}
+
+export function getWorkingDaysInMonth(year: number, month: number): number {
+  const date = new Date(year, month - 1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let workingDays = 0;
+  for (let day = 1; day <= daysInMonth; day++) {
+    date.setDate(day);
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      workingDays++;
+    }
+  }
+  return workingDays;
 }
 
 export function selectEffectiveSettings(rows: SettingRow[], asOf: Date): Record<string, string> {
@@ -443,5 +499,11 @@ export function selectEffectiveSettings(rows: SettingRow[], asOf: Date): Record<
   }
   return result;
 }
+
+
+
+
+
+
 
 

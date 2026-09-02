@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from './generated/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { DEFAULT_STATUTORY_CONFIG } from '@/lib/payroll-engine';
+import bcrypt from 'bcryptjs';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -15,12 +15,43 @@ const prisma = new PrismaClient({
 async function main() {
   console.log('🌱 Seeding database...');
 
+  const bootstrapEmail = process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL;
+  const bootstrapPassword = process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD;
+  if (!bootstrapEmail || !bootstrapPassword || bootstrapPassword.length < 8) {
+    throw new Error('BOOTSTRAP_SUPER_ADMIN_EMAIL and a password of at least 8 characters are required');
+  }
+
   // Clear existing data (in order due to foreign keys)
   await prisma.auditLog.deleteMany();
+  await prisma.passwordReset.deleteMany();
+  await prisma.session.deleteMany();
   await prisma.payrollRecord.deleteMany();
   await prisma.employee.deleteMany();
   await prisma.settings.deleteMany();
+  await prisma.user.deleteMany();
 
+  const business = await prisma.business.upsert({
+    where: { id: 'test-biz-001' },
+    update: { name: 'Test Business', status: 'ACTIVE' },
+    create: { id: 'test-biz-001', name: 'Test Business', status: 'ACTIVE' },
+  });
+
+  await prisma.user.upsert({
+    where: { email: bootstrapEmail.toLowerCase() },
+    update: { passwordHash: await bcrypt.hash(bootstrapPassword, 10), role: 'SUPER_ADMIN', status: 'ACTIVE', businessId: null },
+    create: { email: bootstrapEmail.toLowerCase(), passwordHash: await bcrypt.hash(bootstrapPassword, 10), role: 'SUPER_ADMIN', status: 'ACTIVE' },
+  });
+  for (const account of [
+    { email: 'admin@testbiz.local', password: 'AdminTest123', role: 'ADMIN' as const },
+    { email: 'operator@testbiz.local', password: 'OperatorTest123', role: 'PAYROLL_OPERATOR' as const },
+    { email: 'viewer@testbiz.local', password: 'ViewerTest123', role: 'VIEWER' as const },
+  ]) {
+    await prisma.user.upsert({
+      where: { email: account.email },
+      update: { businessId: business.id, role: account.role, status: 'ACTIVE' },
+      create: { email: account.email, passwordHash: await bcrypt.hash(account.password, 10), role: account.role, status: 'ACTIVE', businessId: business.id },
+    });
+  }
   // Seed Settings
   console.log('📋 Seeding settings...');
   
@@ -83,9 +114,9 @@ async function main() {
 
   for (const setting of settings) {
     await prisma.settings.upsert({
-      where: { key: setting.key },
-      update: setting,
-      create: setting,
+      where: { key_businessId: { key: setting.key, businessId: business.id } },
+      update: { ...setting, businessId: business.id },
+      create: { ...setting, businessId: business.id },
     });
   }
 
@@ -280,7 +311,7 @@ async function main() {
   ];
 
   for (const emp of employees) {
-    await prisma.employee.create({ data: emp });
+    await prisma.employee.create({ data: { ...emp, businessId: business.id } });
   }
 
   console.log('✅ Database seeded successfully!');

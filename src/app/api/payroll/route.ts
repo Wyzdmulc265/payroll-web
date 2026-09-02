@@ -3,6 +3,8 @@ import prisma, { Prisma } from '@/lib/prisma';
 import { calculatePayroll, PayrollInput, buildStatutoryConfigFromSettings, selectEffectiveSettings, getWorkingDaysInMonth } from '@/lib/payroll-engine';
 import { calculateEmployerFBT, FringeBenefitInput as FBTInput } from '@/lib/fbt-engine';
 import { z } from 'zod';
+import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
+import { getRequestIp, logAuditEvent } from '@/lib/audit';
 
 const runPayrollSchema = z.object({
    payrollPeriod: z.string().regex(/^\d{4}-\d{2}$/, 'Period must be YYYY-MM'),
@@ -40,6 +42,11 @@ const runPayrollSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.RUN_PAYROLL);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const body = await request.json();
     const validatedData = runPayrollSchema.parse(body);
 
@@ -51,7 +58,7 @@ export async function POST(request: NextRequest) {
     const periodStart = new Date(year, month - 1, 1);
     const periodEnd = new Date(year, month, 0); // Last day of month
 
-    const configSettings = await prisma.settings.findMany();
+    const configSettings = await prisma.settings.findMany({ where: { businessId: session.user.businessId } });
     const configMap = selectEffectiveSettings(
       configSettings.map((s) => ({ key: s.key, value: s.value, effectiveFrom: s.effectiveFrom })),
       periodEnd
@@ -81,6 +88,7 @@ export async function POST(request: NextRequest) {
     // August payroll) must not appear in that pay run.
     const employees = await prisma.employee.findMany({
       where: {
+        businessId: session.user.businessId,
         isActive: true,
         employmentDate: { lte: periodEnd },
         ...(employeeIds && employeeIds.length > 0 ? { id: { in: employeeIds } } : {}),
@@ -111,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     // Check if payroll already exists for this period
     const existingCount = await prisma.payrollRecord.count({
-      where: { payrollPeriod },
+      where: { payrollPeriod, businessId: session.user.businessId },
     });
 
     if (existingCount > 0) {
@@ -170,6 +178,7 @@ const result = calculatePayroll({
             periodStart,
             periodEnd,
             employee: { connect: { id: emp.id } },
+            business: { connect: { id: session.user.businessId } },
             department: emp.department,
             position: emp.position,
             basicSalary: result.basicSalary,
@@ -191,7 +200,7 @@ const result = calculatePayroll({
             totalDeductions: result.totalDeductions,
             netPay: result.netPay,
             employerCost: result.employerCost,
-            runBy: 'system',
+            runByUser: { connect: { id: session.user.id } },
             status: 'Saved',
             configSnapshot: JSON.parse(JSON.stringify({
               taxBands: config.taxBands.map(b => ({ ...b })),
@@ -247,15 +256,12 @@ const result = calculatePayroll({
        await Promise.all(fringeBenefitCreatePromises);
      }
 
-     await prisma.auditLog.create({
-       data: {
-         user: 'system',
-         action: 'PAYROLL_RUN',
-         entityType: 'Payroll',
-         entityId: payrollPeriod,
-         description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
-         newValue: JSON.stringify({ period: payrollPeriod, count: employees.length }),
-       },
+     await logAuditEvent({
+       action: 'PAYROLL_SAVED', entityType: 'Payroll', entityId: payrollPeriod,
+       userId: session.user.id, businessId: session.user.businessId,
+       description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
+       newData: { period: payrollPeriod, count: employees.length },
+       ipAddress: getRequestIp(request),
      });
 
     return NextResponse.json({
@@ -284,12 +290,17 @@ const result = calculatePayroll({
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.READ_PAYROLL);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { searchParams } = new URL(request.url);
     const payrollPeriod = searchParams.get('period');
     const employeeId = searchParams.get('employeeId');
     const department = searchParams.get('department');
 
-    const where: Prisma.PayrollRecordWhereInput = {};
+    const where: Prisma.PayrollRecordWhereInput = { businessId: session.user.businessId };
     if (payrollPeriod) where.payrollPeriod = payrollPeriod;
     if (employeeId) where.employeeId = employeeId;
     if (department && department !== 'All') where.department = department;

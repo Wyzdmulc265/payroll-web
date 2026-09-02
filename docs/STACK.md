@@ -89,6 +89,17 @@ role it plays**, and **why it was chosen for this specific app**.
 - **Role**: Runs `prisma/seed.ts` (TypeScript) via the `prisma:seed` script.
 - **Why here**: Lets us write the seed in TypeScript without a build step.
 
+### `bcryptjs`
+- **Role**: Password hashing and verification for application users.
+- **Why here**: Provides a battle-tested adaptive password hash without storing
+  plaintext credentials; the auth foundation uses 10 salt rounds.
+
+### Node.js `crypto`
+- **Role**: Generates opaque session and password-reset tokens and hashes them
+  with SHA-256 before persistence.
+- **Why here**: Keeps bearer tokens out of the database while using the platform
+  cryptography implementation and HttpOnly cookies.
+
 ---
 
 ## 3. UI & Styling

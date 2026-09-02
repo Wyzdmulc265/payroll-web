@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
+import { getRequestIp, logAuditEvent } from '@/lib/audit';
 
 const employeeSchema = z.object({
   employeeId: z.string().regex(/^EMP\d{3}$/, 'Employee ID must be in format EMPXXX'),
@@ -25,6 +27,11 @@ const employeeSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.READ_EMPLOYEES);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { searchParams } = new URL(request.url);
     const department = searchParams.get('department');
     const status = searchParams.get('status');
@@ -34,7 +41,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const skip = (page - 1) * limit;
 
-    const where: Prisma.EmployeeWhereInput = {};
+    const where: Prisma.EmployeeWhereInput = { businessId: session.user.businessId };
     
     if (department && department !== 'All') {
       where.department = department;
@@ -93,6 +100,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.MANAGE_EMPLOYEES);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const body = await request.json();
     const validatedData = employeeSchema.parse(body);
 
@@ -111,21 +123,17 @@ export async function POST(request: NextRequest) {
     const employee = await prisma.employee.create({
       data: {
         ...validatedData,
+        business: { connect: { id: session.user.businessId } },
         fullName: `${validatedData.firstName} ${validatedData.lastName}`,
         employmentDate: new Date(validatedData.employmentDate),
       },
     });
 
-    // Log audit
-    await prisma.auditLog.create({
-      data: {
-        user: 'system', // TODO: get from auth session
-        action: 'CREATE',
-        entityType: 'Employee',
-        entityId: employee.id,
-        description: `Created employee ${employee.employeeId}`,
-        newValue: JSON.stringify(employee),
-      },
+    await logAuditEvent({
+      action: 'EMPLOYEE_CREATED', entityType: 'Employee', entityId: employee.id,
+      userId: session.user.id, businessId: session.user.businessId,
+      description: `Created employee ${employee.employeeId}`, newData: employee,
+      ipAddress: getRequestIp(request),
     });
 
     return NextResponse.json({ success: true, data: employee }, { status: 201 });

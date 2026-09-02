@@ -9,14 +9,23 @@ adapter.
 
 ## 1. Overview
 
-Five models — `Employee`, `PayrollRecord`, `FringeBenefit`, `AuditLog`,
-`Settings` — cover the entire system. Money is stored as **`Decimal(15, 2)`**;
+Nine models — `Business`, `User`, `Session`, `PasswordReset`, `Employee`,
+`PayrollRecord`, `FringeBenefit`, `AuditLog`, and `Settings` — cover the entire
+system. Money is stored as **`Decimal(15, 2)`**;
 historical statutory configuration is stored as **`Json`** on each
 `PayrollRecord`; soft-delete via `isActive`; audit trail is a separate
 append-only table.
 
 The schema is intentionally small. The application derives everything
 else (KPIs, charts, reports) at query time.
+
+### Authentication and tenancy
+
+`Business` owns users, employees, payroll records, settings, and audit logs.
+`User` stores a bcrypt password hash, role, status, and optional business ID;
+SUPER_ADMIN users have no implicit business payroll access. `Session` stores
+only a SHA-256 token hash and expires after one day. `PasswordReset` stores a
+one-time hashed token with an expiry.
 
 ---
 
@@ -49,7 +58,8 @@ The master record. **Soft-deletable** (`isActive`). All historical
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `id` | `String @id` | `cuid()` | Internal primary key. |
-| `employeeId` | `String @unique` | — | The *business* id, regex `^EMP\d{3}$` enforced by Zod. |
+| `employeeId` | `String @unique` | — | The employee id, regex `^EMP\d{3}$` enforced by Zod. It remains globally unique for now. |
+| `businessId` | `String?` FK→Business | — | Tenant ownership; nullable while legacy data is being migrated. |
 | `firstName`, `lastName` | `String` | — | |
 | `fullName` | `String?` | — | Denormalised `<first> <last>`; recomputed in API on name change. |
 | `nationalId` | `String? @unique` | — | Malawi National ID, optional but unique when present. |
@@ -105,7 +115,7 @@ period.
 | `otherDeductions`, `totalDeductions`, `netPay`, `employerCost` | `Decimal(15, 2)` | `0` / — | |
 | `configSnapshot` | `Json?` | — | **Audit-grade snapshot** of the `StatutoryConfig` used. |
 | `runDate` | `DateTime` | `now()` | |
-| `runBy` | `String` | — | Currently hardcoded `"system"` — see IMPROVEMENTS. |
+| `runByUserId` | `String?` FK→User | — | User who ran the payroll; nullable for legacy records. |
 | `status` | `String` | `"Saved"` | Lifecycle marker. |
 
 **Constraints**: `@@unique([payrollPeriod, employeeId])` — prevents
@@ -117,24 +127,26 @@ double-paying an employee for the same period.
 
 ## 5. `AuditLog` → table `audit_logs`
 
-Append-only log of every mutating action. Currently a single table for
-all entity types.
+Append-only log of mutating actions across all entity types. Each new
+authenticated event can store the actor, business, request IP, and before/after
+snapshots.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | `String @id` | `cuid()` |
 | `timestamp` | `DateTime @default(now())` | |
-| `user` | `String` | Currently hardcoded `"system"`. |
-| `action` | `String` | `CREATE` / `UPDATE` / `DEACTIVATE` / `PAYROLL_RUN`. |
+| `userId` | `String?` FK→User | Authenticated actor; nullable for legacy records. |
+| `businessId` | `String?` FK→Business | Tenant owning the event. |
+| `action` | `String` | Named domain action, e.g. `EMPLOYEE_UPDATED` or `PAYROLL_SAVED`. |
 | `entityType` | `String` | e.g. `Employee`, `Payroll`. |
 | `entityId` | `String` | e.g. the employee's `id`, or the period string for `PAYROLL_RUN`. |
 | `description` | `String` | Human-readable. |
 | `oldValue` | `String?` | JSON-stringified previous state. |
 | `newValue` | `String?` | JSON-stringified new state. |
-| `ipAddress` | `String?` | **Declared but never populated** (no auth = no source). |
+| `ipAddress` | `String?` | Request IP captured by the audit helper where available. |
 | `employeeId` | `String?` FK→Employee | Optional link; `onDelete: SetNull` (audit survives employee deletion). |
 
-**Indexes**: `(entityType, entityId)`, `timestamp`, `employeeId`.
+**Indexes**: `(entityType, entityId)`, `timestamp`, `(businessId, timestamp)`, `userId`, `employeeId`.
 
 > **Known issue** — `oldValue` and `newValue` are JSON-stringified
 > into a single text column, which is convenient for `JSON.stringify`
@@ -151,11 +163,12 @@ All values are stored as `text` (string) for portability.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | `String @id` | `cuid()` |
-| `key` | `String @unique` | e.g. `statutory.paye_band_1_from`. |
+| `key` | `String` | e.g. `statutory.paye_band_1_from`; unique with `businessId`. |
 | `value` | `String` | Always a string. |
 | `description` | `String?` | |
 | `effectiveFrom` | `DateTime` | Enables history (`statutory.pension_ee_rate` can have a row effective 2024-07-01 and another effective 2025-07-01). |
 | `category` | `String` | `COMPANY` / `PAYROLL` / `STATUTORY` / `SYSTEM`. |
+| `businessId` | `String?` FK→Business | Tenant ownership; unique constraint uses `(key, businessId)`. |
 
 **Indexes**: `category`.
 

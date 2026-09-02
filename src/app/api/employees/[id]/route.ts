@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
+import { getRequestIp, logAuditEvent } from '@/lib/audit';
 
 const updateEmployeeSchema = z.object({
   firstName: z.string().min(1).optional(),
@@ -29,10 +31,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.READ_EMPLOYEES);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { id } = await params;
     
     const employee = await prisma.employee.findUnique({
-      where: { id },
+      where: { id, businessId: session.user.businessId },
       include: {
         payrollRecords: {
           orderBy: { payrollPeriod: 'desc' },
@@ -63,11 +70,16 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.MANAGE_EMPLOYEES);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { id } = await params;
     const body = await request.json();
     const validatedData = updateEmployeeSchema.parse(body);
 
-    const existing = await prisma.employee.findUnique({ where: { id } });
+    const existing = await prisma.employee.findFirst({ where: { id, businessId: session.user.businessId } });
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Employee not found' },
@@ -84,21 +96,15 @@ export async function PUT(
     }
 
     const employee = await prisma.employee.update({
-      where: { id },
+      where: { id, businessId: session.user.businessId },
       data: updateData,
     });
 
-    // Log audit
-    await prisma.auditLog.create({
-      data: {
-        user: 'system',
-        action: 'UPDATE',
-        entityType: 'Employee',
-        entityId: id,
-        description: `Updated employee ${employee.employeeId}`,
-        oldValue: JSON.stringify(existing),
-        newValue: JSON.stringify(employee),
-      },
+    await logAuditEvent({
+      action: 'EMPLOYEE_UPDATED', entityType: 'Employee', entityId: id,
+      userId: session.user.id, businessId: session.user.businessId,
+      description: `Updated employee ${employee.employeeId}`,
+      previousData: existing, newData: employee, ipAddress: getRequestIp(request),
     });
 
     return NextResponse.json({ success: true, data: employee });
@@ -122,9 +128,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.MANAGE_EMPLOYEES);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { id } = await params;
     
-    const existing = await prisma.employee.findUnique({ where: { id } });
+    const existing = await prisma.employee.findFirst({ where: { id, businessId: session.user.businessId } });
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Employee not found' },
@@ -134,20 +145,15 @@ export async function DELETE(
 
     // Soft delete - mark as inactive
     const employee = await prisma.employee.update({
-      where: { id },
+      where: { id, businessId: session.user.businessId },
       data: { isActive: false, employmentStatus: 'Inactive' },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        user: 'system',
-        action: 'DEACTIVATE',
-        entityType: 'Employee',
-        entityId: id,
-        description: `Deactivated employee ${employee.employeeId}`,
-        oldValue: JSON.stringify(existing),
-        newValue: JSON.stringify(employee),
-      },
+    await logAuditEvent({
+      action: 'EMPLOYEE_DEACTIVATED', entityType: 'Employee', entityId: id,
+      userId: session.user.id, businessId: session.user.businessId,
+      description: `Deactivated employee ${employee.employeeId}`,
+      previousData: existing, newData: employee, ipAddress: getRequestIp(request),
     });
 
     return NextResponse.json({ success: true, data: employee });

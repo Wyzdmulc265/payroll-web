@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma, { Prisma } from '@/lib/prisma';
 import { formatCurrency, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
+import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.READ_REPORTS);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'Payroll Register';
     const period = searchParams.get('period');
@@ -17,11 +23,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Load statutory config from Settings (falls back to defaults).
-    const configSettings = await prisma.settings.findMany();
+    const configSettings = await prisma.settings.findMany({ where: { businessId: session.user.businessId } });
     const configMap = Object.fromEntries(configSettings.map((s) => [s.key, s.value]));
     const config = buildStatutoryConfigFromSettings(configMap);
 
-    const where: Prisma.PayrollRecordWhereInput = { payrollPeriod: period };
+    const where: Prisma.PayrollRecordWhereInput = { payrollPeriod: period, businessId: session.user.businessId };
     if (department && department !== 'All') {
       where.department = department;
     }
@@ -225,7 +231,7 @@ export async function GET(request: NextRequest) {
         }
         // Get history for specific employee
         const employeeId = searchParams.get('employeeId');
-        const whereHistory: Prisma.PayrollRecordWhereInput = { payrollPeriod: { lte: period } };
+        const whereHistory: Prisma.PayrollRecordWhereInput = { payrollPeriod: { lte: period }, businessId: session.user.businessId };
         if (employeeId) whereHistory.employeeId = employeeId;
 
         const history = await prisma.payrollRecord.findMany({

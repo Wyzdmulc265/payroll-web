@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { formatCurrency, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
+import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getCurrentUser(request);
+    if (!session) return unauthorized();
+    const denied = requirePermission(session.user, Permission.READ_PAYROLL);
+    if (denied) return denied;
+    if (!session.user.businessId) return unauthorized();
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period');
 
@@ -12,6 +18,7 @@ export async function GET(request: NextRequest) {
       const periods = await prisma.payrollRecord.findMany({
         select: { payrollPeriod: true },
         distinct: ['payrollPeriod'],
+        where: { businessId: session.user.businessId },
         orderBy: { payrollPeriod: 'desc' },
       });
       return NextResponse.json({
@@ -21,18 +28,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Load statutory config from Settings (falls back to defaults).
-    const configSettings = await prisma.settings.findMany();
+    const configSettings = await prisma.settings.findMany({ where: { businessId: session.user.businessId } });
     const configMap = Object.fromEntries(configSettings.map((s) => [s.key, s.value]));
     const config = buildStatutoryConfigFromSettings(configMap);
 
     // Get all payroll records for the period
     const records = await prisma.payrollRecord.findMany({
-      where: { payrollPeriod: period },
+      where: { payrollPeriod: period, businessId: session.user.businessId },
       include: { employee: true },
     });
 
     // KPIs
-    const activeEmployees = await prisma.employee.count({ where: { isActive: true } });
+    const activeEmployees = await prisma.employee.count({ where: { isActive: true, businessId: session.user.businessId } });
     const totalGross = records.reduce((sum, r) => sum + Number(r.grossEarnings), 0);
     const totalDeductions = records.reduce((sum, r) => sum + Number(r.totalDeductions), 0);
     const totalNetPay = records.reduce((sum, r) => sum + Number(r.netPay), 0);
@@ -82,7 +89,7 @@ export async function GET(request: NextRequest) {
     // Monthly trend (last 12 months)
     const monthlyTrend = await prisma.payrollRecord.groupBy({
       by: ['payrollPeriod'],
-      where: { payrollPeriod: { lte: period } },
+      where: { payrollPeriod: { lte: period }, businessId: session.user.businessId },
       _sum: {
         grossEarnings: true,
         netPay: true,
@@ -96,7 +103,7 @@ export async function GET(request: NextRequest) {
     // Employee headcount trend
     const headcountTrend = await prisma.payrollRecord.groupBy({
       by: ['payrollPeriod'],
-      where: { payrollPeriod: { lte: period } },
+      where: { payrollPeriod: { lte: period }, businessId: session.user.businessId },
       _count: { employeeId: true },
       orderBy: { payrollPeriod: 'desc' },
       take: 12,
