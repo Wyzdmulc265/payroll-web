@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { NextRequest } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { type Prisma } from '@/lib/prisma';
 import type { AuthUser, SessionContext } from './types';
 
 export const SESSION_COOKIE = 'payroll_session';
@@ -20,12 +20,14 @@ const userSelect = {
 
 export async function createSession(
   userId: string,
-  metadata?: { ipAddress?: string; userAgent?: string }
+  metadata?: { ipAddress?: string; userAgent?: string },
+  tx?: Prisma.TransactionClient
 ): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const client = tx ?? prisma;
 
-  await prisma.session.create({
+  await client.session.create({
     data: {
       userId,
       tokenHash: hashToken(token),
@@ -62,8 +64,9 @@ export async function getSessionContext(request: NextRequest): Promise<SessionCo
   return token ? validateSessionToken(token) : null;
 }
 
-export async function invalidateSession(token: string): Promise<void> {
-  await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
+export async function invalidateSession(token: string, tx?: Prisma.TransactionClient): Promise<void> {
+  const client = tx ?? prisma;
+  await client.session.deleteMany({ where: { tokenHash: hashToken(token) } });
 }
 
 export async function invalidateAllSessionsForUser(userId: string): Promise<void> {

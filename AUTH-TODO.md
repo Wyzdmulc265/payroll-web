@@ -6,9 +6,9 @@ This checklist records the complete authentication, authorization, multi-busines
 
 ## Status Summary
 
-- **Implemented:** database foundation, Prisma migration, password/session primitives, role map, login/logout/session/reset endpoints, and partial API tenant protection.
+- **Implemented:** database foundation, Prisma migration, password/session primitives, role map, login/logout/session/reset endpoints, partial API tenant protection, login UI, request middleware, navigation changes, and Phase 7 user management (list/create/edit/deactivate, business-scoped, hashed passwords, audit events).
 - **Partially implemented:** seed bootstrap, route protection, audit identity fields, password reset delivery, and audit event coverage.
-- **Not implemented:** login UI, middleware, navigation changes, user management, business management, audit viewer/API, comprehensive auth tests, and final documentation.
+- **Not implemented:** business management, audit viewer/API, comprehensive integration tests (blocked by Neon transaction-pooler environment), and final documentation.
 - **Important:** `src/lib/payroll-engine.ts` remains a pure module and must not receive authentication or database responsibilities.
 
 ## Phase 1: Database Schema and Migration
@@ -161,35 +161,35 @@ This checklist records the complete authentication, authorization, multi-busines
 
 ## Phase 6: Login UI and Request Middleware
 
-- [ ] Create `/login` page with email/password form.
-- [ ] Submit login form to the auth API.
-- [ ] Display validation and rate-limit errors.
-- [ ] Create `/forgot-password` page.
-- [ ] Create `/reset-password/[token]` page.
-- [ ] Add client-side password confirmation and strength validation.
-- [ ] Add middleware for protected pages and API routes.
-- [ ] Allow unauthenticated access only to auth pages/routes and public assets.
-- [ ] Redirect unauthenticated browser requests to `/login`.
-- [ ] Clear expired session cookies during redirects where supported.
-- [ ] Update layout to load current user state.
-- [ ] Update MainNav with user email and role.
-- [ ] Add logout action to MainNav.
-- [ ] Filter navigation by role.
+- [x] Create `/login` page with email/password form.
+- [x] Submit login form to the auth API.
+- [x] Display validation and rate-limit errors.
+- [x] Create `/forgot-password` page.
+- [x] Create `/reset-password/[token]` page.
+- [x] Add client-side password confirmation and strength validation.
+- [x] Add middleware for protected pages and API routes.
+- [x] Allow unauthenticated access only to auth pages/routes and public assets.
+- [x] Redirect unauthenticated browser requests to `/login`.
+- [x] Clear expired session cookies during redirects where supported.
+- [x] Update layout to load current user state.
+- [x] Update MainNav with user email and role.
+- [x] Add logout action to MainNav.
+- [x] Filter navigation by role.
 - [ ] Add browser smoke tests for login, redirect, and logout.
 
 ## Phase 7: User Management
 
-- [ ] Add user-management permissions and schemas.
-- [ ] Create `GET/POST /api/users`.
-- [ ] Create `GET/PUT/DELETE /api/users/[id]` or logical deactivation route.
-- [ ] Restrict user management to authorized ADMIN users.
-- [ ] Restrict ADMIN role creation and prevent privilege escalation.
-- [ ] Hash user-created passwords.
-- [ ] Enforce same-business user lookup and mutation.
-- [ ] Log user create, update, and deactivate events.
-- [ ] Create `/users` page with list, create, edit, and deactivate workflows.
-- [ ] Never return password hashes or reset tokens.
-- [ ] Add user-management documentation and tests.
+- [x] Add user-management permissions and schemas.
+- [x] Create `GET/POST /api/users`.
+- [x] Create `GET/PUT/DELETE /api/users/[id]` or logical deactivation route.
+- [x] Restrict user management to authorized ADMIN users.
+- [x] Restrict ADMIN role creation and prevent privilege escalation.
+- [x] Hash user-created passwords.
+- [x] Enforce same-business user lookup and mutation.
+- [x] Log user create, update, and deactivate events.
+- [x] Create `/users` page with list, create, edit, and deactivate workflows.
+- [x] Never return password hashes or reset tokens.
+- [x] Add user-management documentation and tests.
 
 ## Phase 8: Comprehensive Audit Log System
 

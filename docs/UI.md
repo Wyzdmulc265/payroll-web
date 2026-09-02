@@ -20,6 +20,8 @@ nav (`pb-24`). Both are `print:hidden` so payslips print clean.
 - Inter font, gray-50 background, `antialiased`.
 - `metadata`: `title: 'WizTech Payroll'`,
   `description: 'Malawi Payroll Management System'`.
+- Renders `<UserProvider />` (from `src/components/UserContext.tsx`) to
+  provide the current user to the nav and pages.
 - Renders `<MainNav />` once for the whole app.
 - The content `<div>` has `print:ml-0 print:pb-0` to remove the
   sidebar offset when printing.
@@ -36,6 +38,11 @@ Single source of nav. Renders **two** presentations of the same links:
 | --- | --- | --- |
 | **Sidebar** | `lg:flex` | Fixed left, `w-64`, scrollable, with a "WizTech Payroll / Malawi" brand header. |
 | **Bottom bar** | `lg:hidden` | Fixed bottom, 6-column grid, mobile-friendly icons + labels. |
+
+**Auth-aware hiding**: when `pathname` matches `/login`,
+`/forgot-password`, or `/reset-password/*`, `MainNav` returns
+`<>{children}</>` with no sidebar and no layout offset. Auth pages
+therefore do not need their own layout wrapper.
 
 **Active state** is derived from `usePathname()`:
 `pathname === href || pathname.startsWith(href + '/')`. Icons come

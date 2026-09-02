@@ -9,6 +9,7 @@ export const Permission = {
   MANAGE_SETTINGS: 'manage:settings',
   READ_REPORTS: 'read:reports',
   READ_AUDIT_LOGS: 'read:audit-logs',
+  READ_USERS: 'read:users',
   MANAGE_USERS: 'manage:users',
   MANAGE_BUSINESSES: 'manage:businesses',
 } as const;
@@ -16,11 +17,11 @@ export const Permission = {
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
 export const rolePermissions: Record<Role, readonly Permission[]> = {
-  SUPER_ADMIN: [Permission.MANAGE_BUSINESSES, Permission.MANAGE_USERS],
+  SUPER_ADMIN: [Permission.MANAGE_BUSINESSES, Permission.READ_USERS, Permission.MANAGE_USERS],
   ADMIN: [
     Permission.READ_PAYROLL, Permission.RUN_PAYROLL, Permission.READ_EMPLOYEES,
     Permission.MANAGE_EMPLOYEES, Permission.READ_SETTINGS, Permission.MANAGE_SETTINGS,
-    Permission.READ_REPORTS, Permission.READ_AUDIT_LOGS, Permission.MANAGE_USERS,
+    Permission.READ_REPORTS, Permission.READ_AUDIT_LOGS, Permission.READ_USERS, Permission.MANAGE_USERS,
   ],
   PAYROLL_OPERATOR: [
     Permission.READ_PAYROLL, Permission.RUN_PAYROLL, Permission.READ_EMPLOYEES,

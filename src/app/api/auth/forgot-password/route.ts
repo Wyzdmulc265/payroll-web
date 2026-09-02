@@ -4,6 +4,7 @@ import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import { forgotPasswordSchema } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
+import { sendPasswordResetEmail } from '@/lib/mail';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,14 +14,15 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findUnique({ where: { email } });
     if (user?.status === 'ACTIVE') {
       const token = randomBytes(32).toString('hex');
-      await prisma.passwordReset.create({
-        data: {
-          userId: user.id,
-          tokenHash: createHash('sha256').update(token).digest('hex'),
-          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-        },
-      });
-      console.info(`Password reset requested for ${email}; deliver token through the configured mailer.`);
+      await prisma.$transaction(async (tx) => {
+        await tx.passwordReset.create({
+          data: {
+            userId: user.id,
+            tokenHash: createHash('sha256').update(token).digest('hex'),
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          },
+        });
+      await sendPasswordResetEmail(user.email, token);
       await logAuditEvent({
         action: 'FORGOT_PASSWORD_REQUESTED',
         entityType: 'Auth',
@@ -29,6 +31,7 @@ export async function POST(request: NextRequest) {
         businessId: user.businessId,
         description: 'Password reset requested',
         ipAddress: getRequestIp(request),
+      }, tx);
       });
     }
 

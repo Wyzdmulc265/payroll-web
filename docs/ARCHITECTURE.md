@@ -191,29 +191,40 @@ for the SWR/React-Query migration path.
 
 ---
 
-## 6. Auth (Current State and Roadmap)
+## 6. Auth (Current State)
 
-**Current state:** `next-auth@5.0.0-beta.25` is in `dependencies` but **not
-wired up**. There is no `app/api/auth/[...nextauth]/route.ts`, no middleware,
-and no session. Every audit log records the literal string `"system"`, and every
-`PayrollRecord.runBy` is `"system"`. This is a tracked, prioritized item in
-[`IMPROVEMENTS.md`](./IMPROVEMENTS.md#1).
+The application uses a **custom session system** (not `next-auth`).
 
-**Target state (when implemented):**
+**Flow:**
 
 ```Auth
-User → /login (Credentials or Email provider)
-        ↓ session cookie (next-auth)
-  Middleware (src/middleware.ts) → blocks /api/* for unauthed requests
+User → /login (credentials form)
+        ↓ POST /api/auth/login
+  createSession(userId) → SHA-256 token hash stored in Session row
+        ↓ Set-Cookie: payroll_session (HttpOnly, SameSite=Lax)
+  Proxy (src/proxy.ts) → blocks /api/* for unauthed requests
         ↓
-  Route handlers → `await auth()` resolves session.user.id
+  Route handlers → getSessionContext(request) resolves SessionContext
         ↓
-  AuditLog.user = session.user.email
-  PayrollRecord.runBy = session.user.email
+  AuditLog.user = session.user.id
 ```
 
-The interface is already prepared — `runBy` is a `String`, not an enum, and
-the API routes already extract request context, so the upgrade is additive.
+**Key files:**
+
+- `src/lib/auth/session.ts` — `createSession`, `validateSessionToken`,
+  `invalidateSession`, `invalidateAllSessionsForUser`.
+- `src/lib/auth/rate-limit.ts` — DB-backed `RateLimit` model; 5 attempts
+  per 15-minute window per client key.
+- `src/lib/auth/cookies.ts` — `setSessionCookie` / `clearSessionCookie`.
+- `src/lib/audit.ts` — `logAuditEvent(event, tx?)`; accepts an optional
+  Prisma transaction client so audit writes abort the transaction on
+  failure.
+- `src/proxy.ts` — Next.js 16 proxy; checks cookie presence only (no
+  Prisma). Full session validation happens in route handlers.
+
+**Note:** `next-auth@5.0.0-beta.25` remains in `dependencies` but is
+intentionally unused. The custom system supersedes it. See `IMPROVEMENTS`
+for the rationale.
 
 ---
 

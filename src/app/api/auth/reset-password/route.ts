@@ -22,18 +22,18 @@ export async function POST(request: NextRequest) {
     await prisma.$transaction(async (transaction) => {
       await transaction.user.update({ where: { id: reset.userId }, data: { passwordHash: await hashPassword(newPassword) } });
       await transaction.passwordReset.update({ where: { id: reset.id }, data: { status: 'USED' } });
+      const user = await transaction.user.findUnique({ where: { id: reset.userId }, select: { businessId: true } });
+      await logAuditEvent({
+        action: 'PASSWORD_CHANGED',
+        entityType: 'Auth',
+        entityId: reset.userId,
+        userId: reset.userId,
+        businessId: user?.businessId,
+        description: 'Password changed through reset flow',
+        ipAddress: getRequestIp(request),
+      }, transaction);
     });
     await invalidateAllSessionsForUser(reset.userId);
-    const user = await prisma.user.findUnique({ where: { id: reset.userId }, select: { businessId: true } });
-    await logAuditEvent({
-      action: 'PASSWORD_CHANGED',
-      entityType: 'Auth',
-      entityId: reset.userId,
-      userId: reset.userId,
-      businessId: user?.businessId,
-      description: 'Password changed through reset flow',
-      ipAddress: getRequestIp(request),
-    });
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof z.ZodError) {

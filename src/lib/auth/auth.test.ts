@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
+import prisma from '../prisma';
 import { hashPassword, verifyPassword } from './password';
 import { hasPermission, Permission } from './permissions';
 import { checkLoginRateLimit, clearLoginRateLimit } from './rate-limit';
@@ -33,12 +34,19 @@ describe('permissions and tenant access', () => {
 });
 
 describe('login rate limit', () => {
-  it('allows five attempts and blocks the sixth', () => {
+  beforeEach(async () => {
+    await prisma.rateLimit.deleteMany();
+  });
+
+  it('allows five attempts and blocks the sixth', async () => {
     const key = `test-${Date.now()}`;
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      expect(checkLoginRateLimit(key).allowed).toBe(true);
+      const result = await checkLoginRateLimit(key);
+      expect(result.allowed).toBe(true);
     }
-    expect(checkLoginRateLimit(key).allowed).toBe(false);
-    clearLoginRateLimit(key);
-  });
+    const blocked = await checkLoginRateLimit(key);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.retryAfterSeconds).toBeGreaterThan(0);
+    await clearLoginRateLimit(key);
+  }, 15000);
 });

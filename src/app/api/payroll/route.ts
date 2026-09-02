@@ -236,33 +236,33 @@ const result = calculatePayroll({
         });
       }
 
-     // Create payroll records + fringe benefits + audit log in a transaction.
-     const createdRecords = await prisma.$transaction(
-       payrollRecords.map(pr => prisma.payrollRecord.create({
-         data: pr.record,
-         include: { employee: true },
-       }))
-     );
+      // Create payroll records + fringe benefits + audit log in a transaction.
+      const createdRecords = await prisma.$transaction(async (tx) => {
+        const records = await Promise.all(
+          payrollRecords.map(pr => tx.payrollRecord.create({
+            data: pr.record,
+            include: { employee: true },
+          }))
+        );
 
-      const fringeBenefitCreatePromises: Promise<Prisma.BatchPayload>[] = [];
-     for (let i = 0; i < createdRecords.length; i++) {
-       const recordId = createdRecords[i].id;
-       const rows = payrollRecords[i].fbtRows.map(r => ({ ...r, payrollRecordId: recordId }));
-       if (rows.length > 0) {
-         fringeBenefitCreatePromises.push(prisma.fringeBenefit.createMany({ data: rows }));
-       }
-     }
-     if (fringeBenefitCreatePromises.length > 0) {
-       await Promise.all(fringeBenefitCreatePromises);
-     }
+        for (let i = 0; i < records.length; i++) {
+          const recordId = records[i].id;
+          const rows = payrollRecords[i].fbtRows.map(r => ({ ...r, payrollRecordId: recordId }));
+          if (rows.length > 0) {
+            await tx.fringeBenefit.createMany({ data: rows });
+          }
+        }
 
-     await logAuditEvent({
-       action: 'PAYROLL_SAVED', entityType: 'Payroll', entityId: payrollPeriod,
-       userId: session.user.id, businessId: session.user.businessId,
-       description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
-       newData: { period: payrollPeriod, count: employees.length },
-       ipAddress: getRequestIp(request),
-     });
+        await logAuditEvent({
+          action: 'PAYROLL_SAVED', entityType: 'Payroll', entityId: payrollPeriod,
+          userId: session.user.id, businessId: session.user.businessId,
+          description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
+          newData: { period: payrollPeriod, count: employees.length },
+          ipAddress: getRequestIp(request),
+        }, tx);
+
+        return records;
+      });
 
     return NextResponse.json({
       success: true,

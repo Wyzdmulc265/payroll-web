@@ -10,8 +10,8 @@ adapter.
 ## 1. Overview
 
 Nine models — `Business`, `User`, `Session`, `PasswordReset`, `Employee`,
-`PayrollRecord`, `FringeBenefit`, `AuditLog`, and `Settings` — cover the entire
-system. Money is stored as **`Decimal(15, 2)`**;
+`PayrollRecord`, `FringeBenefit`, `AuditLog`, `Settings`, and `RateLimit` —
+cover the entire system. Money is stored as **`Decimal(15, 2)`**;
 historical statutory configuration is stored as **`Json`** on each
 `PayrollRecord`; soft-delete via `isActive`; audit trail is a separate
 append-only table.
@@ -25,7 +25,33 @@ else (KPIs, charts, reports) at query time.
 `User` stores a bcrypt password hash, role, status, and optional business ID;
 SUPER_ADMIN users have no implicit business payroll access. `Session` stores
 only a SHA-256 token hash and expires after one day. `PasswordReset` stores a
-one-time hashed token with an expiry.
+one-time hashed token with an expiry. `RateLimit` tracks per-key login attempt
+counts for brute-force protection.
+
+### Employee ID uniqueness
+
+Employee IDs are unique **per business**, enforced by the composite unique
+constraint `@@unique([employeeId, businessId])`. There is no `@unique` on
+`employeeId` alone. Different businesses may reuse the same employee ID
+(e.g. `EMP001`). The `EMP\d{3}` format in the Zod schema is a validation
+convenience, not a global constraint. It limits to 1,000 employees per
+business; this ceiling is documented here but not changed in this phase.
+
+### Nullable tenant fields
+
+`businessId` is **nullable** on `Business`-scoped models. Rationale:
+`SUPER_ADMIN` users have no `businessId`, and historical `AuditLog` rows
+have no `userId`. Making these fields required would require special sentinel
+rows or nullable-override patterns that complicate the schema more than they
+help.
+
+### Historical data
+
+Migration `20260902144109_add_auth_and_business_models` dropped the legacy
+`audit_logs.user` and `payroll_records.run_by` columns. Historical rows now
+have `userId: null` and `businessId: null`. No archival backfill is possible
+because the columns are gone; this is documented as an accepted data-loss
+event for pre-migration audit history.
 
 ---
 
@@ -265,6 +291,8 @@ Under `prisma/migrations/`:
 | `20260901055119_payroll_config_snapshot` | (Duplicate-named; follow-up tweak — see IMPROVEMENTS to merge/rename.) |
 | `20260901170112_add_overtime_hours_to_payroll_record` | Splits `overtimeHours` into three buckets. |
 | `20260901202008_add_fringe_benefit_tax` | Adds `FringeBenefit` model, `fringeBenefitBase`, `fringeBenefitTax`, `fbtSnapshot` to `PayrollRecord`. |
+| `20260902144109_add_auth_and_business_models` | Adds `Business`, `User`, `Session`, `PasswordReset` models; drops legacy `audit_logs.user` and `payroll_records.run_by`; adds `business_id` to employees, payroll, settings. |
+| `20260902144200_add_rate_limit_table` | Adds `RateLimit` model for per-key login brute-force protection. |
 
 **Apply in prod**: `npm run prisma:deploy`.
 

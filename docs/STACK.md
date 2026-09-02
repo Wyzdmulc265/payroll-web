@@ -157,7 +157,35 @@ role it plays**, and **why it was chosen for this specific app**.
 
 ---
 
-## 5. PDF & Reporting (Declared, To Be Used)
+## 5. Authentication (Custom Session System)
+
+The project originally planned to use `next-auth@5` (see below), but a
+custom session system was built instead. The custom system is now
+production-active; `next-auth` is pre-installed but intentionally unused.
+
+### Custom session system
+
+- **Session storage**: `Session` model in Prisma; only a SHA-256 token
+  hash is persisted (never the raw token).
+- **Token lifetime**: 24 hours. Expired or inactive-user sessions are
+  rejected by `validateSessionToken` and deleted.
+- **Cookie**: `payroll_session`, HttpOnly, SameSite=Lax, Secure in
+  production.
+- **Rate limiting**: `RateLimit` model; 5 attempts per 15-minute window
+  per client key (`IP + User-Agent`).
+- **Password hashing**: `bcryptjs` at 10 rounds.
+- **Token generation**: `node:crypto` `randomBytes(32)` for session and
+  password-reset tokens; SHA-256 hashed before storage.
+
+### `next-auth@^5.0.0-beta.25` (pre-installed, superseded)
+
+- **Role**: pre-installed but not wired.
+- **Why it's still in `dependencies`**: The custom system supersedes it;
+  removing it is a low-priority cleanup tracked in `IMPROVEMENTS.md`.
+
+---
+
+## 6. PDF & Reporting (Declared, To Be Used)
 
 ### `@react-pdf/renderer@^4.1.6`
 - **Role**: **Declared but not yet used.** Today, payslips are printed via

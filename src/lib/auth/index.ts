@@ -7,3 +7,4 @@ export * from './schemas';
 export * from './session';
 export * from './types';
 export * from './user';
+export * from './user-management';

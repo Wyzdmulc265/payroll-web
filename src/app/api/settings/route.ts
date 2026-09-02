@@ -58,12 +58,14 @@ export async function DELETE(request: NextRequest) {
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Setting not found' }, { status: 404 });
     }
-    await prisma.settings.delete({ where: { key_businessId: { key, businessId: session.user.businessId } } });
-    await logAuditEvent({
-      action: 'SETTINGS_DELETED', entityType: 'Settings', entityId: existing.id,
-      userId: session.user.id, businessId: session.user.businessId,
-      description: `Deleted setting ${key}`, previousData: existing,
-      ipAddress: getRequestIp(request),
+    await prisma.$transaction(async (tx) => {
+      await tx.settings.delete({ where: { key_businessId: { key, businessId: session.user.businessId } } });
+      await logAuditEvent({
+        action: 'SETTINGS_DELETED', entityType: 'Settings', entityId: existing.id,
+        userId: session.user.id, businessId: session.user.businessId,
+        description: `Deleted setting ${key}`, previousData: existing,
+        ipAddress: getRequestIp(request),
+      }, tx);
     });
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -88,28 +90,32 @@ export async function POST(request: NextRequest) {
     const existing = await prisma.settings.findUnique({
       where: { key_businessId: { key: validatedData.key, businessId: session.user.businessId } },
     });
-    const setting = await prisma.settings.upsert({
-      where: { key_businessId: { key: validatedData.key, businessId: session.user.businessId } },
-      update: {
-        value: validatedData.value,
-        description: validatedData.description,
-        category: validatedData.category,
-        effectiveFrom: validatedData.effectiveFrom ? new Date(validatedData.effectiveFrom) : new Date(),
-        business: { connect: { id: session.user.businessId } },
-      },
-      create: {
-        ...validatedData,
-        effectiveFrom: validatedData.effectiveFrom ? new Date(validatedData.effectiveFrom) : new Date(),
-        business: { connect: { id: session.user.businessId } },
-      },
-    });
+    const setting = await prisma.$transaction(async (tx) => {
+      const updated = await tx.settings.upsert({
+        where: { key_businessId: { key: validatedData.key, businessId: session.user.businessId } },
+        update: {
+          value: validatedData.value,
+          description: validatedData.description,
+          category: validatedData.category,
+          effectiveFrom: validatedData.effectiveFrom ? new Date(validatedData.effectiveFrom) : new Date(),
+          business: { connect: { id: session.user.businessId } },
+        },
+        create: {
+          ...validatedData,
+          effectiveFrom: validatedData.effectiveFrom ? new Date(validatedData.effectiveFrom) : new Date(),
+          business: { connect: { id: session.user.businessId } },
+        },
+      });
 
-    await logAuditEvent({
-      action: existing ? 'SETTINGS_UPDATED' : 'SETTINGS_CREATED',
-      entityType: 'Settings', entityId: setting.id,
-      userId: session.user.id, businessId: session.user.businessId,
-      description: `${existing ? 'Updated' : 'Created'} setting ${setting.key}`,
-      previousData: existing, newData: setting, ipAddress: getRequestIp(request),
+      await logAuditEvent({
+        action: existing ? 'SETTINGS_UPDATED' : 'SETTINGS_CREATED',
+        entityType: 'Settings', entityId: updated.id,
+        userId: session.user.id, businessId: session.user.businessId,
+        description: `${existing ? 'Updated' : 'Created'} setting ${updated.key}`,
+        previousData: existing, newData: updated, ipAddress: getRequestIp(request),
+      }, tx);
+
+      return updated;
     });
 
     return NextResponse.json({ success: true, data: setting });

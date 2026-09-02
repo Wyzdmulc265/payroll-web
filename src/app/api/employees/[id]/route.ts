@@ -95,16 +95,20 @@ export async function PUT(
       updateData.employmentDate = new Date(validatedData.employmentDate);
     }
 
-    const employee = await prisma.employee.update({
-      where: { id, businessId: session.user.businessId },
-      data: updateData,
-    });
+    const employee = await prisma.$transaction(async (tx) => {
+      const updated = await tx.employee.update({
+        where: { id, businessId: session.user.businessId },
+        data: updateData,
+      });
 
-    await logAuditEvent({
-      action: 'EMPLOYEE_UPDATED', entityType: 'Employee', entityId: id,
-      userId: session.user.id, businessId: session.user.businessId,
-      description: `Updated employee ${employee.employeeId}`,
-      previousData: existing, newData: employee, ipAddress: getRequestIp(request),
+      await logAuditEvent({
+        action: 'EMPLOYEE_UPDATED', entityType: 'Employee', entityId: id,
+        userId: session.user.id, businessId: session.user.businessId,
+        description: `Updated employee ${updated.employeeId}`,
+        previousData: existing, newData: updated, ipAddress: getRequestIp(request),
+      }, tx);
+
+      return updated;
     });
 
     return NextResponse.json({ success: true, data: employee });
@@ -144,16 +148,20 @@ export async function DELETE(
     }
 
     // Soft delete - mark as inactive
-    const employee = await prisma.employee.update({
-      where: { id, businessId: session.user.businessId },
-      data: { isActive: false, employmentStatus: 'Inactive' },
-    });
+    const employee = await prisma.$transaction(async (tx) => {
+      const updated = await tx.employee.update({
+        where: { id, businessId: session.user.businessId },
+        data: { isActive: false, employmentStatus: 'Inactive' },
+      });
 
-    await logAuditEvent({
-      action: 'EMPLOYEE_DEACTIVATED', entityType: 'Employee', entityId: id,
-      userId: session.user.id, businessId: session.user.businessId,
-      description: `Deactivated employee ${employee.employeeId}`,
-      previousData: existing, newData: employee, ipAddress: getRequestIp(request),
+      await logAuditEvent({
+        action: 'EMPLOYEE_DEACTIVATED', entityType: 'Employee', entityId: id,
+        userId: session.user.id, businessId: session.user.businessId,
+        description: `Deactivated employee ${updated.employeeId}`,
+        previousData: existing, newData: updated, ipAddress: getRequestIp(request),
+      }, tx);
+
+      return updated;
     });
 
     return NextResponse.json({ success: true, data: employee });

@@ -106,9 +106,9 @@ model PasswordReset {
 
 model Employee {
   id                String    @id @default(cuid())
-  employeeId        String    @unique @map("employee_id") // EMP001
-  businessId        String?   @map("business_id")
-  business          Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employeeId        String    @map("employee_id") // EMP001
+  businessId        String    @map("business_id")
+  business          Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   firstName         String    @map("first_name")
   lastName          String    @map("last_name")
   fullName          String?   @map("full_name")
@@ -135,6 +135,7 @@ model Employee {
   payrollRecords PayrollRecord[]
   auditLogs      AuditLog[]
 
+  @@unique([employeeId, businessId])
   @@index([businessId])
   @@index([department])
   @@index([employmentStatus])
@@ -165,8 +166,8 @@ model PayrollRecord {
   periodEnd                  DateTime  @map("period_end")
   employeeId                 String    @map("employee_id")
   employee                   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  businessId                 String?   @map("business_id")
-  business                   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId                 String    @map("business_id")
+  business                   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   department                 String
   position                   String
   basicSalary                Decimal   @map("basic_salary") @db.Decimal(15, 2)
@@ -261,3 +262,15 @@ model Settings {
 // statutory.max_pensionable_income = "1000000"
 // statutory.tevet_levy_rate = "1"
 // statutory.fringe_benefit_tax_rate = "30"
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  count     Int      @default(0)
+  resetAt   DateTime @map("reset_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([key])
+  @@index([resetAt])
+  @@map("rate_limits")
+}

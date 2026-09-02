@@ -109,8 +109,11 @@ export async function POST(request: NextRequest) {
     const validatedData = employeeSchema.parse(body);
 
     // Check for duplicate employeeId
-    const existing = await prisma.employee.findUnique({
-      where: { employeeId: validatedData.employeeId },
+    const existing = await prisma.employee.findFirst({
+      where: {
+        employeeId: validatedData.employeeId,
+        businessId: session.user.businessId,
+      },
     });
 
     if (existing) {
@@ -120,20 +123,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const employee = await prisma.employee.create({
-      data: {
-        ...validatedData,
-        business: { connect: { id: session.user.businessId } },
-        fullName: `${validatedData.firstName} ${validatedData.lastName}`,
-        employmentDate: new Date(validatedData.employmentDate),
-      },
-    });
+    const employee = await prisma.$transaction(async (tx) => {
+      const created = await tx.employee.create({
+        data: {
+          ...validatedData,
+          business: { connect: { id: session.user.businessId } },
+          fullName: `${validatedData.firstName} ${validatedData.lastName}`,
+          employmentDate: new Date(validatedData.employmentDate),
+        },
+      });
 
-    await logAuditEvent({
-      action: 'EMPLOYEE_CREATED', entityType: 'Employee', entityId: employee.id,
-      userId: session.user.id, businessId: session.user.businessId,
-      description: `Created employee ${employee.employeeId}`, newData: employee,
-      ipAddress: getRequestIp(request),
+      await logAuditEvent({
+        action: 'EMPLOYEE_CREATED', entityType: 'Employee', entityId: created.id,
+        userId: session.user.id, businessId: session.user.businessId,
+        description: `Created employee ${created.employeeId}`, newData: created,
+        ipAddress: getRequestIp(request),
+      }, tx);
+
+      return created;
     });
 
     return NextResponse.json({ success: true, data: employee }, { status: 201 });

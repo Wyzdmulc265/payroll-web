@@ -42,8 +42,82 @@ hashed. Email delivery remains a deployment follow-up.
 
 ### `POST /api/auth/reset-password`
 
-Accepts `{ "token": "...", "newPassword": "StrongPass1" }`, consumes a pending
+Accepts `{ "token": "..." , "newPassword": "StrongPass1" }`, consumes a pending
 token, updates the password, and invalidates all existing sessions.
+
+### `GET /api/users`
+
+List users in the actor's business, newest first, paginated.
+
+| Query | Type | Default | Description |
+| --- | --- | --- | --- |
+| `page` | `number` | `1` | 1-indexed. |
+| `limit` | `number` | `50` | Page size. |
+
+**Response `200`**:
+
+```json
+{
+  "success": true,
+  "data": [
+    { "id": "ck...", "email": "ops@example.com", "role": "PAYROLL_OPERATOR", "status": "ACTIVE", "businessId": "biz...", "createdAt": "...", "updatedAt": "..." }
+  ],
+  "pagination": { "page": 1, "limit": 50, "total": 4, "totalPages": 1 }
+}
+```
+
+- Requires `READ_USERS` and an assigned `businessId` (`SUPER_ADMIN` without a
+  business context gets `403`). Responses never include `passwordHash`.
+- `403` for roles without `READ_USERS`; `401` without a valid session.
+
+### `POST /api/users`
+
+Create a user in the actor's business.
+
+**Body** (Zod-validated):
+
+```json
+{ "email": "ops@example.com", "password": "StrongPass1", "role": "PAYROLL_OPERATOR" }
+```
+
+- `role` is restricted to `ADMIN | PAYROLL_OPERATOR | VIEWER`; `SUPER_ADMIN` is
+  rejected (`400`) to prevent privilege escalation.
+- Password follows the shared policy (min 8 chars, one uppercase, one number).
+- Password is hashed with bcryptjs (10 rounds); `businessId` is taken from the
+  session, never the request body.
+- `400` on duplicate email or validation failure; requires `MANAGE_USERS`.
+- Emits `USER_CREATED` audit event with actor, business, and IP.
+
+**Response `201`**: `{ success: true, data: { <safe user fields> } }`.
+
+### `GET /api/users/[id]`
+
+Single user within the actor's business. `404` if not found or in another
+business. Requires `READ_USERS`.
+
+### `PUT /api/users/[id]`
+
+Update a user in the actor's business.
+
+**Body** (all optional):
+
+```json
+{ "email": "ops@example.com", "role": "PAYROLL_OPERATOR", "status": "ACTIVE", "password": "NewStrong1" }
+```
+
+- Setting `role` to `SUPER_ADMIN` is rejected (`403`/`400`).
+- An actor cannot change their own role or deactivate themselves (`403`).
+- `password`, when provided, is re-hashed; otherwise the existing hash is kept.
+- `400` on empty body or duplicate email; requires `MANAGE_USERS`.
+- Emits `USER_UPDATED` audit event (sanitized old/new values, no hashes).
+
+### `DELETE /api/users/[id]`
+
+Logically deactivate a user: `status` becomes `INACTIVE` so the account can no
+longer sign in. Current sessions remain but are rejected by session validation.
+
+- `404` if not found or in another business; self-deactivation is `403`.
+- Requires `MANAGE_USERS`; emits `USER_DEACTIVATED` audit event.
 
 ---
 
@@ -95,7 +169,8 @@ Create one employee. Zod schema in source (lines 5–24 of
 - `employmentDate` is coerced via `z.coerce.date()`.
 - `basicSalary` is `z.number().positive()`.
 - On duplicate `employeeId`: `400 { success: false, error: "Employee ID already exists" }`.
-- Emits `AuditLog` with `action: 'CREATE'`, `user: 'system'`.
+- Emits `AuditLog` with `action: 'EMPLOYEE_CREATED'`, `user` set to the
+  authenticated user's email.
 
 **Response `201`**: `{ success: true, data: <employee> }`.
 
@@ -428,7 +503,10 @@ Returns the full dashboard payload:
 | Status | When |
 | --- | --- |
 | `400` | `ZodError` (validation); explicit pre-conditions (e.g. payroll already exists for period; non-Monthly employee in `/api/payroll`). |
+| `401` | Missing, invalid, or expired session cookie on protected routes. |
+| `403` | Authenticated user lacks the required role permission. |
 | `404` | `payslips/:id` when no record matches. |
+| `429` | Too many login attempts; includes `Retry-After` header (seconds). |
 | `500` | Any unexpected error — logged with `console.error`, returns generic envelope. |
 
 Every error response has the shape:
