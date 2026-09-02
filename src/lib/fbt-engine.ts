@@ -15,6 +15,47 @@ export enum FringeBenefitType {
   OTHER_BENEFIT = 'OTHER_BENEFIT',
 }
 
+export enum FbtRuleType {
+  PERCENTAGE_OF_COST = 'PERCENTAGE_OF_COST',
+  PERCENTAGE_OF_SALARY = 'PERCENTAGE_OF_SALARY',
+  FIXED_PERCENTAGE = 'FIXED_PERCENTAGE',
+  EMPLOYER_COST = 'EMPLOYER_COST',
+  CONCESSIONARY_LOAN = 'CONCESSIONARY_LOAN',
+  CAPPED_RENTAL = 'CAPPED_RENTAL',
+}
+
+export enum FbtClassification {
+  FBT = 'FBT',
+  PAYE_NOT_FBT = 'PAYE_NOT_FBT',
+  EXCLUDED = 'EXCLUDED',
+}
+
+export interface FbtRule {
+  benefitType: FringeBenefitType;
+  version: string;
+  effectiveFrom: Date;
+  effectiveTo?: Date;
+  valuationRule: {
+    type: FbtRuleType;
+    parameters: Record<string, number | boolean>;
+  };
+  classification: FbtClassification;
+  exclusionConditions?: Record<string, unknown>;
+}
+
+export interface FbtRuleResult {
+  rule: FbtRule;
+  taxableValue: number;
+  classification: FbtClassification;
+  classificationReason?: string;
+  candidateValues: Record<string, number>;
+  selectedTaxableValue: number;
+  reductionApplied?: number;
+  ruleUsed: string;
+  ruleEffectiveFrom: Date;
+  auditTrail: AuditEntry[];
+}
+
 export enum BenefitPaymentMethod {
   DIRECT_TO_INSTITUTION = 'DIRECT_TO_INSTITUTION',
   CASH_TO_EMPLOYEE = 'CASH_TO_EMPLOYEE',
@@ -398,7 +439,273 @@ function calculatePeriodFraction(from: Date, to: Date): number {
   return Math.round(yearFraction * 1000) / 1000;
 }
 
-export function calculateBenefitValue(input: FringeBenefitInput): BenefitValuationResult {
+export function loadFbtRulesFromSettings(settingsMap: Record<string, string>): FbtRule[] {
+  const rules: FbtRule[] = [];
+  
+  // Look for settings with keys matching the pattern: statutory.fbt_rule_<benefitType>_<version>_<effectiveFromDate>
+  for (const [key, value] of Object.entries(settingsMap)) {
+    if (!key.startsWith('statutory.fbt_rule_')) continue;
+    
+    try {
+      const rule = JSON.parse(value);
+      
+      // Validate required fields
+      if (!rule.benefitType || !rule.version || !rule.effectiveFrom || 
+          !rule.valuationRule || !rule.valuationRule.type || !rule.classification) {
+        console.warn(`Invalid FBT rule format for key ${key}`);
+        continue;
+      }
+      
+      // Convert string dates to Date objects
+      rule.effectiveFrom = new Date(rule.effectiveFrom);
+      if (rule.effectiveTo) {
+        rule.effectiveTo = new Date(rule.effectiveTo);
+      }
+      
+      rules.push(rule as FbtRule);
+    } catch (error) {
+      console.warn(`Failed to parse FBT rule for key ${key}:`, error);
+    }
+  }
+  
+  // Sort rules by effectiveFrom date (newest first) for easier lookup
+  return rules.sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime());
+}
+
+export function findApplicableFbtRule(
+  rules: FbtRule[], 
+  benefitType: FringeBenefitType, 
+  effectiveDate: Date
+): FbtRule | null {
+  for (const rule of rules) {
+    // Check if rule matches the benefit type
+    if (rule.benefitType !== benefitType) continue;
+    
+    // Check if effective date is on or after rule's effectiveFrom date
+    if (effectiveDate < rule.effectiveFrom) continue;
+    
+    // Check if effective date is before rule's effectiveTo date (if specified)
+    if (rule.effectiveTo && effectiveDate > rule.effectiveTo) continue;
+    
+    return rule;
+  }
+  
+  return null;
+}
+
+export function applyFbtRule(rule: FbtRule, input: FringeBenefitInput): BenefitValuationResult {
+  const trail: AuditEntry[] = [];
+  const { valuationRule } = rule;
+  
+  let taxableValue = 0;
+  let formula = '';
+  let inputs: Record<string, unknown> = {};
+  
+  // If classification is EXCLUDED or PAYE_NOT_FBT, return 0 taxable value
+  if (rule.classification === FbtClassification.EXCLUDED) {
+    return {
+      input,
+      classification: 'EXCLUDED',
+      classificationReason: 'Excluded per configured FBT rule',
+      candidateValues: {},
+      selectedTaxableValue: 0,
+      ruleUsed: `${rule.benefitType}_${rule.version}`,
+      ruleEffectiveFrom: rule.effectiveFrom,
+      auditTrail: [],
+    };
+  }
+  
+  if (rule.classification === FbtClassification.PAYE_NOT_FBT) {
+    return {
+      input,
+      classification: 'PAYE_NOT_FBT',
+      candidateValues: {},
+      selectedTaxableValue: 0,
+      ruleUsed: `${rule.benefitType}_${rule.version}`,
+      ruleEffectiveFrom: rule.effectiveFrom,
+      auditTrail: [],
+    };
+  }
+  
+  switch (valuationRule.type) {
+    case FbtRuleType.PERCENTAGE_OF_COST: {
+      if (!input.originalCost) {
+        taxableValue = 0;
+        formula = 'originalCost × percentage';
+        inputs = { originalCost: 0 };
+} else {
+      const percentage = Number(valuationRule.parameters.percentage ?? 0);
+      taxableValue = Number(toDecimal(input.originalCost).mul(percentage).div(100));
+      formula = `originalCost × ${percentage}%`;
+      inputs = { originalCost: input.originalCost };
+    }
+    break;
+    }
+    
+    case FbtRuleType.PERCENTAGE_OF_SALARY: {
+      const percentage = Number(valuationRule.parameters.percentage ?? 0);
+      taxableValue = Number(toDecimal(input.amount).mul(percentage).div(100));
+      formula = `amount × ${percentage}%`;
+      inputs = { amount: input.amount };
+      break;
+    }
+    
+    case FbtRuleType.FIXED_PERCENTAGE: {
+      const percentage = Number(valuationRule.parameters.percentage ?? 0);
+      taxableValue = Number(toDecimal(input.amount).mul(percentage).div(100));
+      formula = `amount × ${percentage}%`;
+      inputs = { amount: input.amount };
+      break;
+    }
+    
+    case FbtRuleType.EMPLOYER_COST: {
+      taxableValue = Number(toDecimal(input.amount));
+      formula = 'amount';
+      inputs = { amount: input.amount };
+      break;
+    }
+    
+    case FbtRuleType.CONCESSIONARY_LOAN: {
+      // For concessionary loan, we need additional fields
+      if (!input.principalAmount || !input.benchmarkInterestRate || !input.employerInterestRate) {
+        taxableValue = 0;
+        formula = 'principal × (benchmarkRate - employerRate) × periodFraction';
+        inputs = { 
+          principal: 0, 
+          benchmarkRate: 0, 
+          employerRate: 0, 
+          periodFraction: 1 
+        };
+      } else {
+        const principal = toDecimal(input.principalAmount);
+        const benchmarkRate = toDecimal(input.benchmarkInterestRate).div(100);
+        const employerRate = toDecimal(input.employerInterestRate).div(100);
+        const periodFraction = input.effectiveTo 
+          ? calculatePeriodFraction(input.effectiveFrom, input.effectiveTo) 
+          : 1;
+        
+        const rateDiff = benchmarkRate.sub(employerRate);
+taxableValue = Number(principal.mul(rateDiff).mul(periodFraction));
+        
+        formula = 'principal × (benchmarkRate - employerRate) × periodFraction';
+        inputs = {
+          principal: Number(principal),
+          benchmarkRate: Number(input.benchmarkInterestRate),
+          employerRate: Number(input.employerInterestRate),
+          periodFraction
+        };
+      }
+      break;
+    }
+    
+    case FbtRuleType.CAPPED_RENTAL: {
+      // For capped rental, we need employerRentalCost and openMarketRentalValue
+      if (!input.employerRentalCost || !input.openMarketRentalValue) {
+        taxableValue = 0;
+        formula = 'MIN(employerRentalCost, openMarketRentalValue)';
+        inputs = { 
+          employerRentalCost: 0, 
+          openMarketRentalValue: 0 
+        };
+      } else {
+        const employerRentalCost = toDecimal(input.employerRentalCost);
+        const openMarketRentalValue = toDecimal(input.openMarketRentalValue);
+        const cappedValue = employerRentalCost.gt(openMarketRentalValue) 
+          ? openMarketRentalValue 
+          : employerRentalCost;
+        
+        taxableValue = Number(cappedValue);
+        formula = 'MIN(employerRentalCost, openMarketRentalValue)';
+        inputs = {
+          employerRentalCost: Number(employerRentalCost),
+          openMarketRentalValue: Number(openMarketRentalValue)
+        };
+      }
+      break;
+    }
+    
+    default:
+      // Fallback to default calculation
+      return calculateDefaultBenefit(input);
+  }
+  
+  const roundedValue = roundMWK(taxableValue);
+  
+  // Apply employee contribution if applicable
+  const finalValue = valuationRule.type !== FbtRuleType.EMPLOYER_COST 
+    ? applyEmployeeContribution(roundedValue, input.employeeContribution) 
+    : roundedValue;
+  
+  let reductionApplied: number | undefined;
+  if (valuationRule.type !== FbtRuleType.EMPLOYER_COST && 
+      input.employeeContribution && 
+      finalValue < roundedValue) {
+    reductionApplied = finalValue;
+    
+    trail.push({
+      rule: 'EMPLOYEE_CONTRIBUTION_REDUCTION',
+      source: 'Configured FBT rule',
+      effectiveFrom: rule.effectiveFrom,
+      formula: 'selectedTaxableValue - employeeContribution',
+      inputs: { selectedTaxableValue: roundedValue, employeeContribution: input.employeeContribution },
+      result: finalValue,
+    });
+  }
+  
+  // Add main rule audit entry
+  trail.push({
+    rule: `${rule.benefitType}_${rule.version}`,
+    source: 'Configured FBT rule',
+    effectiveFrom: rule.effectiveFrom,
+    formula,
+    inputs,
+    result: finalValue,
+  });
+  
+  // Determine candidate values for display
+  const candidateValues: Record<string, number> = {};
+  if (valuationRule.type === FbtRuleType.PERCENTAGE_OF_COST && input.originalCost) {
+    candidateValues[`${valuationRule.parameters.percentage}% of original cost`] = roundedValue;
+  } else if (valuationRule.type === FbtRuleType.PERCENTAGE_OF_SALARY) {
+    candidateValues[`${valuationRule.parameters.percentage}% of salary`] = roundedValue;
+  } else if (valuationRule.type === FbtRuleType.FIXED_PERCENTAGE) {
+    candidateValues[`${valuationRule.parameters.percentage}% of amount`] = roundedValue;
+  } else if (valuationRule.type === FbtRuleType.EMPLOYER_COST) {
+    candidateValues['Employer cost'] = roundedValue;
+  } else if (valuationRule.type === FbtRuleType.CONCESSIONARY_LOAN) {
+    candidateValues['Concessionary loan benefit'] = roundedValue;
+  } else if (valuationRule.type === FbtRuleType.CAPPED_RENTAL) {
+    candidateValues['Capped rental value'] = roundedValue;
+  }
+  
+  return {
+    input,
+    classification: rule.classification === FbtClassification.FBT ? 'FBT' :
+                    rule.classification === FbtClassification.PAYE_NOT_FBT ? 'PAYE_NOT_FBT' : 'EXCLUDED',
+    classificationReason: (rule.classification as FbtClassification) === FbtClassification.EXCLUDED 
+      ? 'Excluded per configured FBT rule' 
+      : undefined,
+    candidateValues,
+    selectedTaxableValue: finalValue,
+    reductionApplied,
+    ruleUsed: `${rule.benefitType}_${rule.version}`,
+    ruleEffectiveFrom: rule.effectiveFrom,
+    auditTrail: trail,
+  };
+}
+
+export function calculateBenefitValue(input: FringeBenefitInput, settingsMap?: Record<string, string>): BenefitValuationResult {
+  // Try to use configured FBT rules first if settingsMap is provided
+  if (settingsMap) {
+    const rules = loadFbtRulesFromSettings(settingsMap);
+    const applicableRule = findApplicableFbtRule(rules, input.type, input.effectiveFrom);
+    
+    if (applicableRule) {
+      return applyFbtRule(applicableRule, input);
+    }
+    // If no applicable rule found, fall back to hardcoded logic below
+  }
+  
   const classification = classifyBenefit(input);
 
   if (classification.classification === 'PAYE_NOT_FBT') {
@@ -455,9 +762,10 @@ export function calculateEmployerFBT(
   benefits: FringeBenefitInput[],
   fbtRate: number = 30,
   employeeId?: string,
-  payrollPeriod?: string
+  payrollPeriod?: string,
+  settingsMap?: Record<string, string>
 ): FBTResult {
-  const valuationResults = benefits.map(b => calculateBenefitValue(b));
+  const valuationResults = benefits.map(b => calculateBenefitValue(b, settingsMap));
   const fbtClassified = valuationResults.filter(r => r.classification === 'FBT');
   const totalTaxableValue = fbtClassified.reduce((sum, r) => sum + r.selectedTaxableValue, 0);
   const fringeBenefitsTax = Math.round(totalTaxableValue * (fbtRate / 100));

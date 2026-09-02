@@ -130,11 +130,21 @@ export default function EmployeesPage() {
     try {
       const url = editingEmployee ? `/api/employees/${editingEmployee.id}` : '/api/employees';
       const method = editingEmployee ? 'PUT' : 'POST';
-      
+
+      // Convert string form values to numbers for numeric fields.
+      // formData.basicSalary and formData.allowances arrive as strings from
+      // <input type="number"> events; the API's Zod schema expects actual
+      // numbers, so we coerce here before serialising.
+      const payload: Record<string, unknown> = {
+        ...formData,
+        basicSalary: formData.basicSalary === '' ? undefined : Number(formData.basicSalary),
+        allowances: formData.allowances === '' ? 0 : Number(formData.allowances),
+      };
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       
       const data = await res.json();
@@ -541,7 +551,7 @@ export default function EmployeesPage() {
                     onChange={(e) => setFormData({ ...formData, basicSalary: e.target.value })}
                     className="input"
                     min="1"
-                    step="1000"
+                    step="any"
                     required
                   />
                   {formErrors.basicSalary && <p className="text-sm text-danger mt-1">{formErrors.basicSalary}</p>}
@@ -554,7 +564,7 @@ export default function EmployeesPage() {
                     onChange={(e) => setFormData({ ...formData, allowances: e.target.value })}
                     className="input"
                     min="0"
-                    step="1000"
+                    step="any"
                   />
                 </div>
                 <div>

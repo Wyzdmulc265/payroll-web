@@ -64,12 +64,12 @@ export async function POST(request: NextRequest) {
      );
      const config = buildStatutoryConfigFromSettings(configMap);
 
-     const result = calculatePayroll({
-       ...input,
-       fringeBenefits: benefits,
-       // Period-aware overtime: actual Mon–Fri day count of the month.
-       workingDaysInPeriod: getWorkingDaysInMonth(year, month),
-     }, config);
+const result = calculatePayroll({
+        ...input,
+        fringeBenefits: benefits,
+        // Period-aware overtime: actual Mon–Fri day count of the month.
+        workingDaysInPeriod: getWorkingDaysInMonth(year, month),
+      }, config, configMap);
 
      return NextResponse.json({
        success: true,

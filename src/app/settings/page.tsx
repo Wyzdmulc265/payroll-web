@@ -10,6 +10,7 @@ import {
   ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/payroll-engine';
+import { FbtRuleType, FbtClassification, FringeBenefitType } from '@/lib/fbt-engine';
 
 interface Setting {
   id: string;
@@ -104,8 +105,41 @@ const SYSTEM_FIELDS: FieldDef[] = [
   { key: 'date_format', label: 'Date Format', type: 'text', helper: 'e.g. DD/MM/YYYY' },
   { key: 'auto_calculate', label: 'Auto-Calculate on Change', type: 'toggle', helper: 'Recompute payroll when inputs change' },
   { key: 'backup_enabled', label: 'Enable Auto-Backup', type: 'toggle', helper: 'Create automatic backups of payroll data' },
-  { key: 'audit_log_enabled', label: 'Enable Audit Logging', type: 'toggle', helper: 'Log changes to payroll records' },
+  { key: 'audit_log_enabled', label: 'Enable Audit Logging', type: 'toggle', helper: 'Log changes to payroll records' }
 ];
+
+// FBT Rule Types for UI
+const FBT_RULE_TYPES = [
+  { value: FbtRuleType.PERCENTAGE_OF_COST, label: 'Percentage of Cost' },
+  { value: FbtRuleType.PERCENTAGE_OF_SALARY, label: 'Percentage of Salary' },
+  { value: FbtRuleType.FIXED_PERCENTAGE, label: 'Fixed Percentage' },
+  { value: FbtRuleType.EMPLOYER_COST, label: 'Employer Cost' },
+  { value: FbtRuleType.CONCESSIONARY_LOAN, label: 'Concessionary Loan' },
+  { value: FbtRuleType.CAPPED_RENTAL, label: 'Capped Rental' },
+] as const;
+
+// FBT Benefit Types for UI (excluding excluded ones)
+const FBT_BENEFIT_TYPES = [
+  { value: FringeBenefitType.HOUSING_EMPLOYER_OWNED, label: 'Housing - Employer Owned' },
+  { value: FringeBenefitType.HOUSING_RENTED, label: 'Housing - Rented' },
+  { value: FringeBenefitType.MOTOR_VEHICLE, label: 'Motor Vehicle' },
+  { value: FringeBenefitType.SCHOOL_FEES, label: 'School Fees' },
+  { value: FringeBenefitType.UTILITIES, label: 'Utilities' },
+  { value: FringeBenefitType.HOUSEHOLD_ITEMS, label: 'Household Items' },
+  { value: FringeBenefitType.VACATION, label: 'Vacation' },
+  { value: FringeBenefitType.TRAVEL, label: 'Travel' },
+  { value: FringeBenefitType.DOMESTIC_SERVICE, label: 'Domestic Service' },
+  { value: FringeBenefitType.AIRTIME_DATA, label: 'Airtime & Data' },
+  { value: FringeBenefitType.CONCESSIONARY_LOAN, label: 'Concessionary Loan' },
+  { value: FringeBenefitType.OTHER_BENEFIT, label: 'Other Benefit' },
+] as const;
+
+// FBT Classification Options for UI
+const FBT_CLASSIFICATION_OPTIONS = [
+  { value: FbtClassification.FBT, label: 'Fringe Benefit Tax (FBT)' },
+  { value: FbtClassification.PAYE_NOT_FBT, label: 'PAYE (Not FBT)' },
+  { value: FbtClassification.EXCLUDED, label: 'Excluded' },
+] as const;
 
 interface BandRow {
   from: number;
@@ -175,6 +209,61 @@ function bandsFromMap(settingsMap: Record<string, string>): BandRow[] {
   });
 }
 
+function extractFbtRules(settingsMap: Record<string, string>): Array<{
+  id: string;
+  benefitType: string;
+  version: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  ruleType: string;
+  classification: string;
+  ruleKey: string;
+}> {
+  const rules: Array<{
+    id: string;
+    benefitType: string;
+    version: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    ruleType: string;
+    classification: string;
+    ruleKey: string;
+  }> = [];
+  
+  for (const [key, value] of Object.entries(settingsMap)) {
+    if (!key.startsWith('statutory.fbt_rule_')) continue;
+    
+    try {
+      const rule = JSON.parse(value);
+      
+      // Validate required fields
+      if (!rule.benefitType || !rule.version || !rule.effectiveFrom || 
+          !rule.valuationRule || !rule.valuationRule.type || !rule.classification) {
+        continue;
+      }
+      
+      rules.push({
+        id: key, // Using the key as the ID for simplicity
+        benefitType: rule.benefitType,
+        version: rule.version,
+        effectiveFrom: rule.effectiveFrom,
+        effectiveTo: rule.effectiveTo ?? null,
+        ruleType: rule.valuationRule.type,
+        classification: rule.classification,
+        ruleKey: key
+      });
+    } catch (error) {
+      // Skip invalid JSON
+      continue;
+    }
+  }
+  
+  // Sort by effectiveFrom date (newest first)
+  return rules.sort((a, b) => 
+    new Date(b.effectiveFrom).getTime() - new Date(a.effectiveFrom).getTime()
+  );
+}
+
 function bandsToMap(bands: BandRow[]): Record<string, string> {
   const map: Record<string, string> = {};
   bands.forEach((band, i) => {
@@ -206,6 +295,7 @@ export default function SettingsPage() {
     paye: true,
     pension: true,
     other: true,
+    'fbt-rules': true,
   });
 
   // Local form states per category
@@ -214,6 +304,7 @@ export default function SettingsPage() {
   const [pensionForm, setPensionForm] = useState<Record<string, string>>({});
   const [otherStatutoryForm, setOtherStatutoryForm] = useState<Record<string, string>>({});
   const [systemForm, setSystemForm] = useState<Record<string, string>>({});
+  const [fbtRulesForm, setFbtRulesForm] = useState<Record<string, string>>({});
   const [bands, setBands] = useState<BandRow[]>([]);
 
   const settingsMap = useMemo(() => {
@@ -275,6 +366,9 @@ export default function SettingsPage() {
       SYSTEM_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
       return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
     });
+
+    // Sync FBT rules form - we don't have predefined fields for this as it's dynamic
+    // We'll handle FBT rules separately in the render function
 
     setBands(prev => {
       const next = bandsFromMap(map);
@@ -630,7 +724,7 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Other Statutory */}
+{/* Other Statutory */}
         <div className="border border-gray-200 rounded-lg overflow-hidden">
           <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
             <SectionHeader id="other" title="Other Statutory Items" />
@@ -644,6 +738,117 @@ export default function SettingsPage() {
                   {field.helper && <p className="text-xs text-gray-500 mt-1">{field.helper}</p>}
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* FBT Rules */}
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+            <SectionHeader id="fbt-rules" title="FBT Benefit Rules" />
+          </div>
+          {expandedSections['fbt-rules'] !== false && (
+            <div className="p-4">
+              <div className="space-y-4">
+                {/* FBT Rules Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full table">
+                    <thead>
+                      <tr>
+                        <th className="text-left py-2 px-2 font-medium text-gray-700">Benefit Type</th>
+                        <th className="text-left py-2 px-2 font-medium text-gray-700">Version</th>
+                        <th className="text-left py-2 px-2 font-medium text-gray-700">Effective From</th>
+                        <th className="text-left py-2 px-2 font-medium text-gray-700">Effective To</th>
+                        <th className="text-left py-2 px-2 font-medium text-gray-700">Rule Type</th>
+                        <th className="text-left py-2 px-2 font-medium text-gray-700">Classification</th>
+                        <th className="text-center py-2 px-2">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {extractFbtRules(settingsMap).map((rule) => (
+                        <tr key={rule.id} className="border-b border-gray-100">
+                          <td className="py-2 px-2 text-gray-600">
+                            {FBT_BENEFIT_TYPES.find(bt => bt.value === rule.benefitType)?.label || rule.benefitType}
+                          </td>
+                          <td className="py-2 px-2 text-gray-600">{rule.version}</td>
+                          <td className="py-2 px-2 text-gray-600">
+                            {new Date(rule.effectiveFrom).toLocaleDateString()}
+                          </td>
+                          <td className="py-2 px-2 text-gray-600">
+                            {rule.effectiveTo ? (
+                              <span>
+                                {new Date(rule.effectiveTo).toLocaleDateString()}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-gray-500 italic">ongoing</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 text-gray-600">
+                            {FBT_RULE_TYPES.find(rt => rt.value === rule.ruleType)?.label || rule.ruleType}
+                          </td>
+                          <td className="py-2 px-2 text-gray-600">
+                            {FBT_CLASSIFICATION_OPTIONS.find(fc => fc.value === rule.classification)?.label || rule.classification}
+                          </td>
+                          <td className="py-2 px-2">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  const setting = settings.find(s => s.key === rule.ruleKey);
+                                  if (setting) {
+                                    handleAdvancedEdit(setting);
+                                  }
+                                }}
+                                className="btn-icon hover:text-primary"
+                                title="Edit"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(rule.ruleKey)}
+                                className="btn-icon hover:text-danger"
+                                title="Delete"
+                                aria-label={`Delete ${rule.ruleKey}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Show placeholder if no rules */}
+                      {extractFbtRules(settingsMap).length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="py-4 text-center text-gray-500">
+                            No FBT rules configured. Add rules using the "+ Add Setting" button in Advanced mode.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* Add FBT Rule Button */}
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSetting(null);
+                      setFormData({
+                        key: '',
+                        value: '',
+                        description: '',
+                        category: 'STATUTORY' as Category,
+                        effectiveFrom: new Date().toISOString().split('T')[0],
+                      });
+                      setShowAdvancedModal(true);
+                    }}
+                    className="btn-primary"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add FBT Rule
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -75,10 +75,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get employees to process
+    // Get employees to process.
+    // Only employees whose employmentDate is on or before the period end
+    // are eligible — an employee hired after the period (e.g. Sep 1 for an
+    // August payroll) must not appear in that pay run.
     const employees = await prisma.employee.findMany({
       where: {
         isActive: true,
+        employmentDate: { lte: periodEnd },
         ...(employeeIds && employeeIds.length > 0 ? { id: { in: employeeIds } } : {}),
       },
     });
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
       for (const emp of employees) {
         const ot = overtimeMap.get(emp.id) || {};
         const benefits = fbtMap.get(emp.id) ?? [];
-        const fbtResult = calculateEmployerFBT(benefits, config.fringeBenefitTaxRate, emp.id, payrollPeriod);
+        const fbtResult = calculateEmployerFBT(benefits, config.fringeBenefitTaxRate, emp.id, payrollPeriod, configMap);
 
         const input: PayrollInput = {
           basicSalary: Number(emp.basicSalary),
@@ -145,10 +149,10 @@ export async function POST(request: NextRequest) {
           fringeBenefits: benefits,
         };
 
-         const result = calculatePayroll({
-           ...input,
-           workingDaysInPeriod: getWorkingDaysInMonth(year, month),
-         }, config);
+const result = calculatePayroll({
+            ...input,
+            workingDaysInPeriod: getWorkingDaysInMonth(year, month),
+          }, config, configMap);
 
         const fbtRows: Prisma.FringeBenefitCreateManyInput[] = fbtResult.benefits
           .filter(b => b.classification === 'FBT')

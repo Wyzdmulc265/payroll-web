@@ -11,7 +11,7 @@ together.
 The application follows a clean four-layer split, with **strict top-down
 dependencies** (a lower layer never imports from a higher one):
 
-```
+```overview
 ┌────────────────────────────────────────────────────────────────┐
 │                        UI / Pages                              │
 │  (Next.js App Router pages — src/app/<feature>/page.tsx)        │
@@ -63,7 +63,7 @@ dependencies** (a lower layer never imports from a higher one):
 
 ## 2. Directory Layout
 
-```
+```folderstructure
 payroll-web/
 ├── prisma/
 │   ├── schema.prisma              # Data model
@@ -107,7 +107,7 @@ payroll-web/
 The most representative request flow is **"run payroll for August 2026"**.
 Walking through it shows how every layer collaborates:
 
-```
+```dataflow
 User clicks "Run Payroll" on /payroll
   │
   ▼
@@ -201,7 +201,7 @@ and no session. Every audit log records the literal string `"system"`, and every
 
 **Target state (when implemented):**
 
-```
+```Auth
 User → /login (Credentials or Email provider)
         ↓ session cookie (next-auth)
   Middleware (src/middleware.ts) → blocks /api/* for unauthed requests

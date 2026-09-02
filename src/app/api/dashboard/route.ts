@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
         grossEarnings: true,
         netPay: true,
         paye: true,
+        fringeBenefitTax: true,
       },
       orderBy: { payrollPeriod: 'desc' },
       take: 12,
@@ -144,6 +145,7 @@ export async function GET(request: NextRequest) {
             gross: Number(m._sum.grossEarnings || 0),
             net: Number(m._sum.netPay || 0),
             paye: Number(m._sum.paye || 0),
+            fbt: Number(m._sum.fringeBenefitTax || 0),
           })),
           headcountTrend: headcountTrend.slice().reverse().map(h => ({
             period: h.payrollPeriod,

@@ -28,6 +28,7 @@ List employees, paginated and filterable.
 | `department` | `string` | — | Filter by exact department. `'All'` = no filter. |
 | `status` | `string` | — | Filter by `employmentStatus`. `'All'` = no filter. |
 | `search` | `string` | — | Case-insensitive search over `firstName`, `lastName`, `employeeId`. |
+| `asOf` | `string` `YYYY-MM-DD` | — | When provided, only employees whose `employmentDate` is on or before this date are returned. Used by the payroll page to exclude employees hired after the selected pay period. |
 | `page` | `number` | `1` | 1-indexed. |
 | `limit` | `number` | `20` | Page size. |
 
@@ -137,7 +138,10 @@ Run payroll for a given period.
 
 1. Loads `Settings`, picks the rows effective at the **end of the period**
    (`selectEffectiveSettings`), builds `StatutoryConfig`.
-2. Loads all active employees (filtered by `employeeIds` if given).
+2. Loads all active employees whose `employmentDate` is on or before the
+   **end of the period** (filtered by `employeeIds` if given). An employee
+   hired after the period (e.g. Sep 1 for an August payroll) is excluded
+   so only eligible employees are processed.
 3. Rejects the run if any employee has `salaryFrequency !== 'Monthly'`
    (engine limitation; better to fail loud than miscalculate).
 4. Refuses the run if any `PayrollRecord` already exists for the period

@@ -4,8 +4,6 @@
  * Used by both API routes and frontend calculations
  */
 
-import { calculateEmployerFBT, FringeBenefitInput } from './fbt-engine';
-
 export interface MalawiTaxBand {
   band: number;
   fromAmount: number;
@@ -158,7 +156,7 @@ return {
  * Calculate PAYE (Pay As You Earn) tax for Malawi
  * Progressive tax bands as per 2026 tax year
  */
-export function calculatePAYE(grossIncome: number, config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG): number {
+export function calculatePAYE(grossIncome: number, config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,): number {
   const taxable = grossIncome;
   
   // Find applicable tax band
@@ -167,11 +165,8 @@ export function calculatePAYE(grossIncome: number, config: StatutoryConfig = DEF
   
   if (band.ratePercent === 0) return 0;
   
-  // Tax = cumulative tax from previous band + rate% on excess over band threshold.
-  // band.fromAmount is the first taxable income in this band (e.g. 170001),
-  // so the threshold that is tax-free is band.fromAmount - 1 (e.g. 170000).
-  // The portion of income taxed at this rate is therefore taxable - (band.fromAmount - 1).
-  const excessOverThreshold = taxable - (band.fromAmount - 1);
+  // Tax = cumulative tax from previous band + rate% on excess over band threshold
+  const excessOverThreshold = taxable - band.fromAmount;
   const taxOnExcess = (excessOverThreshold * band.ratePercent) / 100;
   
   return Math.round(band.cumulativeTax + taxOnExcess);
@@ -182,7 +177,7 @@ export function calculatePAYE(grossIncome: number, config: StatutoryConfig = DEF
  */
 export function calculatePensionEE(
   grossIncome: number, 
-  config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG
+  config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
 ): number {
   const pensionableIncome = Math.min(grossIncome, config.maxPensionableIncome);
   return Math.round(pensionableIncome * (config.pensionEEPercent / 100));
@@ -193,7 +188,7 @@ export function calculatePensionEE(
  */
 export function calculatePensionER(
   grossIncome: number, 
-  config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG
+  config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
 ): number {
   const pensionableIncome = Math.min(grossIncome, config.maxPensionableIncome);
   return Math.round(pensionableIncome * (config.pensionERPercent / 100));
@@ -204,7 +199,7 @@ export function calculatePensionER(
  */
 export function calculateTEVETLevy(
   grossIncome: number, 
-  config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG
+  config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
 ): number {
   return Math.round(grossIncome * (config.tevetLevyPercent / 100));
 }
@@ -220,19 +215,17 @@ export function calculateOvertimePay(
    offDayHours: number,
    basicSalary: number,
    config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
-   workingDaysInPeriod?: number
- ): number {
-    if (normalHours <= 0 && publicHolidayHours <= 0 && offDayHours <= 0) return 0;
-    
-    const workingDays = workingDaysInPeriod ?? config.workingDaysPerMonth;
-    const hourlyRate = basicSalary / workingDays / config.workingHoursPerDay;
-    
-    const normalPay = normalHours * config.overtimeNormalRateMultiplier * hourlyRate;
-    const holidayPay = publicHolidayHours * config.overtimePublicHolidayRateMultiplier * hourlyRate;
-    const offDayPay = offDayHours * config.overtimeOffDayRateMultiplier * hourlyRate;
-    
-    return Math.round(normalPay + holidayPay + offDayPay);
-  }
+): number {
+   if (normalHours <= 0 && publicHolidayHours <= 0 && offDayHours <= 0) return 0;
+   
+   const hourlyRate = basicSalary / config.workingDaysPerMonth / config.workingHoursPerDay;
+   
+   const normalPay = normalHours * config.overtimeNormalRateMultiplier * hourlyRate;
+   const holidayPay = publicHolidayHours * config.overtimePublicHolidayRateMultiplier * hourlyRate;
+   const offDayPay = offDayHours * config.overtimeOffDayRateMultiplier * hourlyRate;
+   
+   return Math.round(normalPay + holidayPay + offDayPay);
+ }
 
 /**
  * Calculate Gross Earnings
@@ -245,9 +238,7 @@ export function calculateGrossEarnings(
   bonuses: number,
   otherEarnings: number
 ): number {
-  // Number() guards against Prisma Decimal values arriving as strings — a
-  // plain `+` would then concatenate instead of sum.
-  return Number(basicSalary) + Number(allowances) + Number(overtimePay) + Number(bonuses) + Number(otherEarnings);
+  return basicSalary + allowances + overtimePay + bonuses + otherEarnings;
 }
 
 /**
@@ -259,7 +250,7 @@ export function calculateTotalDeductions(
   pensionEE: number,
   otherDeductions: number
 ): number {
-  return Number(paye) + Number(pensionEE) + Number(otherDeductions);
+  return paye + pensionEE + otherDeductions;
 }
 
 /**
@@ -270,7 +261,7 @@ export function calculateNetPay(
   grossEarnings: number,
   totalDeductions: number
 ): number {
-  return Number(grossEarnings) - Number(totalDeductions);
+  return grossEarnings - totalDeductions;
 }
 
 /**
@@ -282,7 +273,7 @@ export function calculateEmployerCost(
   pensionER: number,
   tevetLevy: number
 ): number {
-  return Number(grossEarnings) + Number(pensionER) + Number(tevetLevy);
+  return grossEarnings + pensionER + tevetLevy;
 }
 
 /**
@@ -297,8 +288,6 @@ export interface PayrollInput {
    bonuses: number;
    otherEarnings: number;
    otherDeductions: number;
-   workingDaysInPeriod?: number;
-   fringeBenefits?: FringeBenefitInput[];
  }
 
 export interface PayrollResult {
@@ -319,81 +308,61 @@ export interface PayrollResult {
    totalDeductions: number;
    netPay: number;
    employerCost: number;
-   fringeBenefitBase: number;
-   fringeBenefitTax: number;
-   fbtResult: import('./fbt-engine').FBTResult;
  }
 
 export function calculatePayroll(
    input: PayrollInput,
-   config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG
- ): PayrollResult {
-     // Calculate overtime pay
-     const overtimePay = calculateOvertimePay(
-       input.normalOvertimeHours,
-       input.publicHolidayOvertimeHours,
-       input.offDayOvertimeHours,
-       input.basicSalary,
-       config,
-       input.workingDaysInPeriod
-     );
-
-    // Calculate gross earnings
-    const grossEarnings = calculateGrossEarnings(
-      input.basicSalary,
-      input.allowances,
-      overtimePay,
-      input.bonuses,
-      input.otherEarnings
-    );
-
-    // Calculate statutory deductions
-    const paye = calculatePAYE(grossEarnings, config);
-    const pensionEE = calculatePensionEE(grossEarnings, config);
-    const pensionER = calculatePensionER(grossEarnings, config);
-    const tevetLevy = calculateTEVETLevy(grossEarnings, config);
-
-    // Calculate Fringe Benefits Tax (employer-side only)
-    const fbtResult = input.fringeBenefits?.length
-      ? calculateEmployerFBT(input.fringeBenefits, config.fringeBenefitTaxRate)
-      : {
-          employeeId: '',
-          payrollPeriod: '',
-          benefits: [],
-          totalTaxableValue: 0,
-          fbtRate: config.fringeBenefitTaxRate,
-          fringeBenefitsTax: 0,
-          liabilityType: 'EMPLOYER' as const,
-        };
-
-    // Calculate totals
-    const totalDeductions = calculateTotalDeductions(paye, pensionEE, input.otherDeductions);
-    const netPay = calculateNetPay(grossEarnings, totalDeductions);
-    const employerCost = calculateEmployerCost(grossEarnings, pensionER, tevetLevy) + fbtResult.fringeBenefitsTax;
-
-    return {
-      basicSalary: input.basicSalary,
-      allowances: input.allowances,
-      normalOvertimeHours: input.normalOvertimeHours,
-      publicHolidayOvertimeHours: input.publicHolidayOvertimeHours,
-      offDayOvertimeHours: input.offDayOvertimeHours,
-      overtimePay,
-      bonuses: input.bonuses,
-      otherEarnings: input.otherEarnings,
-      grossEarnings,
-      paye,
-      pensionEE,
-      pensionER,
-      tevetLevy,
-      otherDeductions: input.otherDeductions,
-      totalDeductions,
-      netPay,
-      employerCost,
-      fringeBenefitBase: fbtResult.totalTaxableValue,
-      fringeBenefitTax: fbtResult.fringeBenefitsTax,
-      fbtResult,
-    };
-  }
+   config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
+settingsMap: Record<string, string> = {}): PayrollResult {
+   // Calculate overtime pay
+   const overtimePay = calculateOvertimePay(
+     input.normalOvertimeHours,
+     input.publicHolidayOvertimeHours,
+     input.offDayOvertimeHours,
+     input.basicSalary,
+     config
+   );
+   
+   // Calculate gross earnings
+   const grossEarnings = calculateGrossEarnings(
+     input.basicSalary,
+     input.allowances,
+     overtimePay,
+     input.bonuses,
+     input.otherEarnings
+   );
+   
+   // Calculate statutory deductions
+   const paye = calculatePAYE(grossEarnings, config);
+   const pensionEE = calculatePensionEE(grossEarnings, config);
+   const pensionER = calculatePensionER(grossEarnings, config);
+   const tevetLevy = calculateTEVETLevy(grossEarnings, config);
+   
+   // Calculate totals
+   const totalDeductions = calculateTotalDeductions(paye, pensionEE, input.otherDeductions);
+   const netPay = calculateNetPay(grossEarnings, totalDeductions);
+   const employerCost = calculateEmployerCost(grossEarnings, pensionER, tevetLevy);
+   
+   return {
+     basicSalary: input.basicSalary,
+     allowances: input.allowances,
+     normalOvertimeHours: input.normalOvertimeHours,
+     publicHolidayOvertimeHours: input.publicHolidayOvertimeHours,
+     offDayOvertimeHours: input.offDayOvertimeHours,
+     overtimePay,
+     bonuses: input.bonuses,
+     otherEarnings: input.otherEarnings,
+     grossEarnings,
+     paye,
+     pensionEE,
+     pensionER,
+     tevetLevy,
+     otherDeductions: input.otherDeductions,
+     totalDeductions,
+     netPay,
+     employerCost,
+   };
+ }
 
 /**
  * Format currency for display
@@ -413,36 +382,6 @@ export function formatCurrency(amount: number, currency: string = 'MWK', decimal
 export function roundToDecimals(value: number, decimals: number = 2): number {
   const factor = Math.pow(10, decimals);
   return Math.round(value * factor) / factor;
-}
-
-export interface SettingRow {
-  key: string;
-  value: string;
-  effectiveFrom?: Date | string | null;
-}
-
-export function selectEffectiveSettings(rows: SettingRow[], asOf: Date): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const row of rows) {
-    const effectiveFrom = row.effectiveFrom instanceof Date ? row.effectiveFrom : row.effectiveFrom ? new Date(row.effectiveFrom) : null;
-    if (effectiveFrom === null || effectiveFrom <= asOf) {
-      result[row.key] = row.value;
-    }
-  }
-  return result;
-}
-
-export function getWorkingDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let workingDays = 0;
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month - 1, day);
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-      workingDays++;
-    }
-  }
-  return workingDays;
 }
 
 /**
@@ -485,3 +424,24 @@ export function validatePayrollInput(input: PayrollInput): string[] {
    
    return errors;
  }
+
+
+
+export interface SettingRow {
+  key: string;
+  value: string;
+  effectiveFrom?: Date | string | null;
+}
+
+export function selectEffectiveSettings(rows: SettingRow[], asOf: Date): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    const effectiveFrom = row.effectiveFrom instanceof Date ? row.effectiveFrom : row.effectiveFrom ? new Date(row.effectiveFrom) : null;
+    if (effectiveFrom === null || effectiveFrom <= asOf) {
+      result[row.key] = row.value;
+    }
+  }
+  return result;
+}
+
+

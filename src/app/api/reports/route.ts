@@ -166,9 +166,10 @@ export async function GET(request: NextRequest) {
         const totalPensionEE = records.reduce((sum, r) => sum + Number(r.pensionEE), 0);
         const totalPensionER = records.reduce((sum, r) => sum + Number(r.pensionER), 0);
         const totalTEVET = records.reduce((sum, r) => sum + Number(r.grossEarnings) * (config.tevetLevyPercent / 100), 0);
+        const totalFBTBase = records.reduce((sum, r) => sum + Number(r.fringeBenefitBase), 0);
         const totalFBT = records.reduce((sum, r) => sum + Number(r.fringeBenefitTax), 0);
 
-        headers = ['Period', 'Total Gross', 'Total PAYE', 'Total Pension EE', 'Total Pension ER', 'Total TEVET Levy', 'Total FBT', 'Total Employer Statutory Cost'];
+        headers = ['Period', 'Total Gross', 'Total PAYE', 'Total Pension EE', 'Total Pension ER', 'Total TEVET Levy', 'Total FBT Base', 'Total FBT', 'Total Employer Statutory Cost'];
         reportData = [[
           period,
           formatCurrency(totalGross),
@@ -176,8 +177,9 @@ export async function GET(request: NextRequest) {
           formatCurrency(totalPensionEE),
           formatCurrency(totalPensionER),
           formatCurrency(totalTEVET),
+          formatCurrency(totalFBTBase),
           formatCurrency(totalFBT),
-          formatCurrency(totalPensionER + totalTEVET + totalFBT),
+          formatCurrency(totalPensionER + totalTEVET + totalFBTBase + totalFBT),
         ]];
         break;
 

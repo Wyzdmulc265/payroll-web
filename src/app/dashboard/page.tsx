@@ -55,6 +55,7 @@ interface DashboardData {
       gross: number;
       net: number;
       paye: number;
+      fbt: number;
     }>;
     headcountTrend: Array<{
       period: string;
@@ -280,9 +281,10 @@ export default function DashboardPage() {
                       <YAxis type="category" dataKey="department" width={100} tick={{ fontSize: 11 }} />
                       <Tooltip formatter={(value: number) => [formatCurrency(value), '']} />
                       <Legend />
-                      <Bar dataKey="gross" name="Gross Payroll" fill="#1e40af" radius={[0, 4, 4, 0]} />
-                      <Bar dataKey="net" name="Net Payroll" fill="#059669" radius={[0, 4, 4, 0]} />
-                      <Bar dataKey="paye" name="PAYE" fill="#dc2626" radius={[0, 4, 4, 0]} />
+                       <Bar dataKey="gross" name="Gross Payroll" fill="#1e40af" radius={[0, 4, 4, 0]} />
+                       <Bar dataKey="net" name="Net Payroll" fill="#059669" radius={[0, 4, 4, 0]} />
+                       <Bar dataKey="paye" name="PAYE" fill="#dc2626" radius={[0, 4, 4, 0]} />
+                       <Bar dataKey="fbt" name="FBT" fill="#d97706" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -308,28 +310,33 @@ export default function DashboardPage() {
                 {dashboardData?.charts.monthlyTrend && dashboardData.charts.monthlyTrend.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={dashboardData.charts.monthlyTrend.slice(-6)}>
-                      <defs>
-                        <linearGradient id="colorGross" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#1e40af" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#1e40af" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#059669" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#059669" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorPaye" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#dc2626" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#dc2626" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
+                       <defs>
+                         <linearGradient id="colorGross" x1="0" y1="0" x2="0" y2="1">
+                           <stop offset="5%" stopColor="#1e40af" stopOpacity={0.3}/>
+                           <stop offset="95%" stopColor="#1e40af" stopOpacity={0}/>
+                         </linearGradient>
+                         <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
+                           <stop offset="5%" stopColor="#059669" stopOpacity={0.3}/>
+                           <stop offset="95%" stopColor="#059669" stopOpacity={0}/>
+                         </linearGradient>
+                         <linearGradient id="colorPaye" x1="0" y1="0" x2="0" y2="1">
+                           <stop offset="5%" stopColor="#dc2626" stopOpacity={0.3}/>
+                           <stop offset="95%" stopColor="#dc2626" stopOpacity={0}/>
+                         </linearGradient>
+                         <linearGradient id="colorFbt" x1="0" y1="0" x2="0" y2="1">
+                           <stop offset="5%" stopColor="#d97706" stopOpacity={0.3}/>
+                           <stop offset="95%" stopColor="#d97706" stopOpacity={0}/>
+                         </linearGradient>
+                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                       <YAxis tickFormatter={formatCompact} tick={{ fontSize: 11 }} />
                       <Tooltip formatter={(value: number) => [formatCurrency(value), '']} />
                       <Legend />
-                      <Area type="monotone" dataKey="gross" name="Gross" stroke="#1e40af" fillOpacity={1} fill="url(#colorGross)" />
-                      <Area type="monotone" dataKey="net" name="Net" stroke="#059669" fillOpacity={1} fill="url(#colorNet)" />
-                      <Area type="monotone" dataKey="paye" name="PAYE" stroke="#dc2626" fillOpacity={1} fill="url(#colorPaye)" />
+                       <Area type="monotone" dataKey="gross" name="Gross" stroke="#1e40af" fillOpacity={1} fill="url(#colorGross)" />
+                       <Area type="monotone" dataKey="net" name="Net" stroke="#059669" fillOpacity={1} fill="url(#colorNet)" />
+                       <Area type="monotone" dataKey="paye" name="PAYE" stroke="#dc2626" fillOpacity={1} fill="url(#colorPaye)" />
+                       <Area type="monotone" dataKey="fbt" name="FBT" stroke="#d97706" fillOpacity={1} fill="url(#colorFbt)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (

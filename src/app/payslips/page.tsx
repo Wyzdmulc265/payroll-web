@@ -44,7 +44,18 @@ interface PayslipData {
   tevetLevy: number;
   fringeBenefitBase: number;
   fringeBenefitTax: number;
-  fbtSummary: any;
+  fbtSummary: {
+    totalTaxableValue: number;
+    fbtRate: number;
+    fringeBenefitsTax: number;
+    benefits: Array<{
+      type: string;
+      classification: string;
+      selectedTaxableValue: number;
+      ruleUsed: string;
+      auditTrail: unknown[];
+    }>;
+  } | null;
   employerCost: number;
   formatted: Record<string, string>;
 }
@@ -468,6 +479,26 @@ export default function PayslipsPage() {
                           <td>Fringe Benefit Tax ({payslip.fbtSummary?.fbtRate ?? 30}%)</td>
                           <td className="text-right font-mono text-green-600">{payslip.formatted.fringeBenefitTax}</td>
                         </tr>
+                            {payslip.fbtSummary?.benefits && payslip.fbtSummary.benefits.length > 0 && (
+                              <>
+                                <tr className="bg-gray-50">
+                                  <td colSpan={2} className="text-xs font-semibold text-gray-500 uppercase tracking-wide py-2">
+                                    FBT Benefit Breakdown
+                                  </td>
+                                </tr>
+                                {payslip.fbtSummary.benefits.map((b, i: number) => (
+                                  <tr key={i} className="text-sm">
+                                    <td className="pl-6 text-gray-600">
+                                      {b.type} {b.classification === 'EXCLUDED' ? '(Excluded)' : ''}
+                                      {b.ruleUsed && <span className="text-gray-400 ml-2">({b.ruleUsed})</span>}
+                                    </td>
+                                    <td className="text-right font-mono text-gray-500">
+                                      {b.selectedTaxableValue > 0 ? formatCurrency(b.selectedTaxableValue) : '—'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </>
+                            )}
                       </>
                     )}
                     <tr className="bg-blue-50 font-semibold">

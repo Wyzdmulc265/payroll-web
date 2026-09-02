@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { 
   Calculator, Loader2, CheckCircle, XCircle, AlertCircle,
@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Minus, Search, Filter
 } from 'lucide-react';
 import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings } from '@/lib/payroll-engine';
-import { FringeBenefitType, BenefitPaymentMethod, FringeBenefitInput, calculateEmployerFBT } from '@/lib/fbt-engine';
+import { FringeBenefitType, BenefitPaymentMethod, FringeBenefitInput, calculateBenefitValue } from '@/lib/fbt-engine';
 
 interface Employee {
   id: string;
@@ -70,47 +70,146 @@ export default function PayrollPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [config, setConfig] = useState<StatutoryConfig | null>(null);
 
+  const [employeeBenefits, setEmployeeBenefits] = useState<Record<string, FringeBenefitInput[]>>({});
+  const [benefitModalOpen, setBenefitModalOpen] = useState(false);
+  const [benefitModalEmployeeId, setBenefitModalEmployeeId] = useState<string | null>(null);
+  const [benefitForm, setBenefitForm] = useState({
+    type: FringeBenefitType.OTHER_BENEFIT,
+    description: '',
+    amount: 0,
+    paymentMethod: BenefitPaymentMethod.DIRECT_TO_INSTITUTION,
+    effectiveFrom: new Date().toISOString().split('T')[0],
+    employeeContribution: 0,
+    originalCost: 0,
+    furnished: false,
+    ownershipType: 'EMPLOYER_OWNED' as 'EMPLOYER_OWNED' | 'RENTED',
+    employerRentalCost: 0,
+    openMarketRentalValue: 0,
+    benchmarkInterestRate: 0,
+    employerInterestRate: 0,
+    principalAmount: 0,
+    effectiveTo: '',
+  });
+
+  const [scrollX, setScrollX] = useState(0);
+  const rafRef = useRef<number | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
   const currentYear = new Date().getFullYear();
   const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 
+  const formatBenefitType = (type: FringeBenefitType): string => {
+    return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const openBenefitModal = (employeeId: string) => {
+    setBenefitModalEmployeeId(employeeId);
+    setBenefitForm({
+      type: FringeBenefitType.OTHER_BENEFIT,
+      description: '',
+      amount: 0,
+      paymentMethod: BenefitPaymentMethod.DIRECT_TO_INSTITUTION,
+      effectiveFrom: new Date().toISOString().split('T')[0],
+      employeeContribution: 0,
+      originalCost: 0,
+      furnished: false,
+      ownershipType: 'EMPLOYER_OWNED',
+      employerRentalCost: 0,
+      openMarketRentalValue: 0,
+      benchmarkInterestRate: 0,
+      employerInterestRate: 0,
+      principalAmount: 0,
+      effectiveTo: '',
+    });
+    setBenefitModalOpen(true);
+  };
+
+  const addBenefit = () => {
+    if (!benefitModalEmployeeId) return;
+    const input: FringeBenefitInput = {
+      type: benefitForm.type,
+      description: benefitForm.description || undefined,
+      paymentMethod: benefitForm.paymentMethod,
+      amount: benefitForm.amount,
+      employeeContribution: benefitForm.employeeContribution || undefined,
+      effectiveFrom: new Date(benefitForm.effectiveFrom),
+      effectiveTo: benefitForm.effectiveTo ? new Date(benefitForm.effectiveTo) : undefined,
+      originalCost: benefitForm.originalCost || undefined,
+      furnished: benefitForm.furnished,
+      ownershipType: benefitForm.ownershipType,
+      employerRentalCost: benefitForm.employerRentalCost || undefined,
+      openMarketRentalValue: benefitForm.openMarketRentalValue || undefined,
+      benchmarkInterestRate: benefitForm.benchmarkInterestRate || undefined,
+      employerInterestRate: benefitForm.employerInterestRate || undefined,
+      principalAmount: benefitForm.principalAmount || undefined,
+    };
+
+    const current = employeeBenefits[benefitModalEmployeeId] || [];
+    const updated = [...current, input];
+    setEmployeeBenefits((prev) => ({ ...prev, [benefitModalEmployeeId]: updated }));
+    setPayrollRows((prev) => prev.map((row) => {
+      if (row.id !== benefitModalEmployeeId) return row;
+      return recalculateRowWithBenefits(row, updated);
+    }));
+    setBenefitModalOpen(false);
+  };
+
+  const removeBenefit = (employeeId: string, index: number) => {
+    const current = employeeBenefits[employeeId] || [];
+    const updated = current.filter((_, i) => i !== index);
+    setEmployeeBenefits((prev) => ({ ...prev, [employeeId]: updated }));
+    setPayrollRows((prev) => prev.map((row) => {
+      if (row.id !== employeeId) return row;
+      return recalculateRowWithBenefits(row, updated);
+    }));
+  };
+
   const fetchEmployees = async () => {
     try {
-      const res = await fetch('/api/employees?limit=100');
+      const [py, pm] = selectedPeriod.split('-').map(Number);
+      const periodEnd = new Date(py, pm, 0);
+      const asOf = periodEnd.toISOString().split('T')[0];
+      const res = await fetch(`/api/employees?limit=100&asOf=${asOf}`);
       const data = await res.json();
       if (data.success) {
         const activeEmployees = (data.data as Employee[]).filter((e) => e.isActive);
         setEmployees(activeEmployees);
-// Initialize payroll rows
-         const rows: PayrollRow[] = activeEmployees.map((emp) => ({
-           id: emp.id,
-           employeeId: emp.employeeId,
-           employeeName: emp.fullName,
-           department: emp.department,
-           position: emp.position,
-           // Defensive: coerce in case the API ever returns Prisma Decimals as strings.
-           basicSalary: Number(emp.basicSalary) || 0,
-           allowances: Number(emp.allowances) || 0,
-           normalOvertimeHours: 0,
-           publicHolidayOvertimeHours: 0,
-           offDayOvertimeHours: 0,
-           overtimePay: 0,
-           bonuses: 0,
-           otherEarnings: 0,
-           grossEarnings: 0,
-           paye: 0,
-           pensionEE: 0,
-           pensionER: 0,
-           tevetLevy: 0,
-           otherDeductions: 0,
-           totalDeductions: 0,
-           netPay: 0,
-           employerCost: 0,
-           fringeBenefitBase: 0,
-           fringeBenefitTax: 0,
-           isValid: true,
-           errors: [],
-         }));
+        const rows: PayrollRow[] = activeEmployees.map((emp) => ({
+          id: emp.id,
+          employeeId: emp.employeeId,
+          employeeName: emp.fullName,
+          department: emp.department,
+          position: emp.position,
+          basicSalary: Number(emp.basicSalary) || 0,
+          allowances: Number(emp.allowances) || 0,
+          normalOvertimeHours: 0,
+          publicHolidayOvertimeHours: 0,
+          offDayOvertimeHours: 0,
+          overtimePay: 0,
+          bonuses: 0,
+          otherEarnings: 0,
+          grossEarnings: 0,
+          paye: 0,
+          pensionEE: 0,
+          pensionER: 0,
+          tevetLevy: 0,
+          otherDeductions: 0,
+          totalDeductions: 0,
+          netPay: 0,
+          employerCost: 0,
+          fringeBenefitBase: 0,
+          fringeBenefitTax: 0,
+          isValid: true,
+          errors: [],
+        }));
         setPayrollRows(rows);
+        setEmployeeBenefits((prev) => {
+          const next = { ...prev };
+          activeEmployees.forEach((emp) => {
+            if (!(emp.id in next)) next[emp.id] = [];
+          });
+          return next;
+        });
         setStatus('loaded');
       }
     } catch (error) {
@@ -138,8 +237,6 @@ export default function PayrollPage() {
       const res = await fetch('/api/settings');
       const data = await res.json();
       if (data.success) {
-        // Pick only settings effective by the end of the selected period, so a
-        // historical period uses the rates in force at that time.
         const [py, pm] = (period || selectedPeriod || suggestedPeriod).split('-').map(Number);
         const asOf = Number.isFinite(py) && Number.isFinite(pm)
           ? new Date(py, pm, 0)
@@ -156,15 +253,12 @@ export default function PayrollPage() {
   };
 
   useEffect(() => {
-    // Initial data load: setLoading fires synchronously inside the fetch helper by design.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPeriods();
     fetchConfig();
   }, []);
 
   useEffect(() => {
     if (selectedPeriod) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchEmployees();
       setStatus('idle');
       setError(null);
@@ -172,65 +266,81 @@ export default function PayrollPage() {
     }
   }, [selectedPeriod]);
 
-const calculateOvertimePay = (row: PayrollRow) => {
-     const cfg = config!;
-     if (row.normalOvertimeHours <= 0 && row.publicHolidayOvertimeHours <= 0 && row.offDayOvertimeHours <= 0) return 0;
-     // Period-aware: use the actual Mon–Fri day count of the selected month
-     // instead of the fixed configured constant.
-     const [py, pm] = selectedPeriod.split('-').map(Number);
-     const days = Number.isFinite(py) && Number.isFinite(pm)
-       ? getWorkingDaysInMonth(py, pm)
-       : cfg.workingDaysPerMonth;
-     const hourlyRate = row.basicSalary / days / cfg.workingHoursPerDay;
-
-     const normalPay = row.normalOvertimeHours * cfg.overtimeNormalRateMultiplier * hourlyRate;
-     const holidayPay = row.publicHolidayOvertimeHours * cfg.overtimePublicHolidayRateMultiplier * hourlyRate;
-     const offDayPay = row.offDayOvertimeHours * cfg.overtimeOffDayRateMultiplier * hourlyRate;
-
-     return Math.round(normalPay + holidayPay + offDayPay);
-   };
-
-const recalculateRow = (row: PayrollRow): PayrollRow => {
-      const overtimePay = calculateOvertimePay(row);
-      const [year, month] = selectedPeriod.split('-').map(Number);
-      const input: PayrollInput = {
-        basicSalary: row.basicSalary,
-        allowances: row.allowances,
-        normalOvertimeHours: row.normalOvertimeHours,
-        publicHolidayOvertimeHours: row.publicHolidayOvertimeHours,
-        offDayOvertimeHours: row.offDayOvertimeHours,
-        bonuses: row.bonuses,
-        otherEarnings: row.otherEarnings,
-        otherDeductions: row.otherDeductions,
-        // Period-aware overtime: actual Mon–Fri days of the selected month.
-        workingDaysInPeriod: Number.isFinite(year) && Number.isFinite(month)
-          ? getWorkingDaysInMonth(year, month)
-          : undefined,
-      };
-      const result = calculatePayroll(input, config!);
-
-      // Validate
-      const errors: string[] = [];
-      if (result.netPay < 0) errors.push('Negative net pay');
-      if (result.paye < 0) errors.push('Invalid PAYE');
-      if (result.pensionEE < 0 || result.pensionER < 0) errors.push('Invalid pension');
-
-      return {
-        ...row,
-        ...result,
-        isValid: errors.length === 0,
-        errors,
-      };
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        setScrollX(Math.min(container.scrollLeft, 200));
+      });
     };
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  const calculateOvertimePay = (row: PayrollRow) => {
+    const cfg = config!;
+    if (row.normalOvertimeHours <= 0 && row.publicHolidayOvertimeHours <= 0 && row.offDayOvertimeHours <= 0) return 0;
+    const [py, pm] = selectedPeriod.split('-').map(Number);
+    const days = Number.isFinite(py) && Number.isFinite(pm)
+      ? getWorkingDaysInMonth(py, pm)
+      : cfg.workingDaysPerMonth;
+    const hourlyRate = row.basicSalary / days / cfg.workingHoursPerDay;
+
+    const normalPay = row.normalOvertimeHours * cfg.overtimeNormalRateMultiplier * hourlyRate;
+    const holidayPay = row.publicHolidayOvertimeHours * cfg.overtimePublicHolidayRateMultiplier * hourlyRate;
+    const offDayPay = row.offDayOvertimeHours * cfg.overtimeOffDayRateMultiplier * hourlyRate;
+
+    return Math.round(normalPay + holidayPay + offDayPay);
+  };
+
+  const recalculateRowWithBenefits = (row: PayrollRow, benefits: FringeBenefitInput[]): PayrollRow => {
+    const overtimePay = calculateOvertimePay(row);
+    const [year, month] = selectedPeriod.split('-').map(Number);
+    const input: PayrollInput = {
+      basicSalary: row.basicSalary,
+      allowances: row.allowances,
+      normalOvertimeHours: row.normalOvertimeHours,
+      publicHolidayOvertimeHours: row.publicHolidayOvertimeHours,
+      offDayOvertimeHours: row.offDayOvertimeHours,
+      bonuses: row.bonuses,
+      otherEarnings: row.otherEarnings,
+      otherDeductions: row.otherDeductions,
+      workingDaysInPeriod: Number.isFinite(year) && Number.isFinite(month)
+        ? getWorkingDaysInMonth(year, month)
+        : undefined,
+      fringeBenefits: benefits,
+    };
+    const result = calculatePayroll(input, config!);
+
+    const errors: string[] = [];
+    if (result.netPay < 0) errors.push('Negative net pay');
+    if (result.paye < 0) errors.push('Invalid PAYE');
+    if (result.pensionEE < 0 || result.pensionER < 0) errors.push('Invalid pension');
+
+    return {
+      ...row,
+      ...result,
+      isValid: errors.length === 0,
+      errors,
+    };
+  };
+
+  const recalculateRow = (row: PayrollRow): PayrollRow => {
+    return recalculateRowWithBenefits(row, employeeBenefits[row.id] ?? []);
+  };
 
   const handleInputChange = (id: string, field: keyof PayrollRow, value: string | number | boolean) => {
     setPayrollRows(prev => prev.map(row => {
       if (row.id !== id) return row;
       const updated = { ...row, [field]: value };
-// Recalculate dependent fields
-       if (['normalOvertimeHours', 'publicHolidayOvertimeHours', 'offDayOvertimeHours', 'basicSalary', 'allowances', 'bonuses', 'otherEarnings', 'otherDeductions'].includes(field)) {
-         return recalculateRow(updated);
-       }
+      if (['normalOvertimeHours', 'publicHolidayOvertimeHours', 'offDayOvertimeHours', 'basicSalary', 'allowances', 'bonuses', 'otherEarnings', 'otherDeductions'].includes(field)) {
+        return recalculateRow(updated);
+      }
       return updated;
     }));
   };
@@ -256,7 +366,6 @@ const recalculateRow = (row: PayrollRow): PayrollRow => {
     setLoading(true);
     setError(null);
     
-    // Client-side validation
     const validatedRows = payrollRows.map(recalculateRow);
     setPayrollRows(validatedRows);
     
@@ -277,79 +386,92 @@ const recalculateRow = (row: PayrollRow): PayrollRow => {
     setLoading(false);
   };
 
-const handleSave = async () => {
-     setSaving(true);
-     setError(null);
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
 
-     try {
-       const overtimeData = payrollRows
-         .filter(r => r.normalOvertimeHours > 0 || r.publicHolidayOvertimeHours > 0 || r.offDayOvertimeHours > 0 || r.bonuses > 0 || r.otherEarnings > 0 || r.otherDeductions > 0)
-         .map(r => ({
-           employeeId: r.id,
-           normalOvertimeHours: r.normalOvertimeHours,
-           publicHolidayOvertimeHours: r.publicHolidayOvertimeHours,
-           offDayOvertimeHours: r.offDayOvertimeHours,
-           bonuses: r.bonuses,
-           otherEarnings: r.otherEarnings,
-           otherDeductions: r.otherDeductions,
-         }));
+    try {
+      const overtimeData = payrollRows
+        .filter(r => r.normalOvertimeHours > 0 || r.publicHolidayOvertimeHours > 0 || r.offDayOvertimeHours > 0 || r.bonuses > 0 || r.otherEarnings > 0 || r.otherDeductions > 0)
+        .map(r => ({
+          employeeId: r.id,
+          normalOvertimeHours: r.normalOvertimeHours,
+          publicHolidayOvertimeHours: r.publicHolidayOvertimeHours,
+          offDayOvertimeHours: r.offDayOvertimeHours,
+          bonuses: r.bonuses,
+          otherEarnings: r.otherEarnings,
+          otherDeductions: r.otherDeductions,
+        }));
 
-       const res = await fetch('/api/payroll', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-           payrollPeriod: selectedPeriod,
-           overtimeData,
-         }),
-       });
+      const fringeBenefitData = Object.entries(employeeBenefits)
+        .filter(([, benefits]) => benefits.length > 0)
+        .map(([employeeId, benefits]) => ({ employeeId, benefits }));
 
-       const data = await res.json();
+      const res = await fetch('/api/payroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payrollPeriod: selectedPeriod,
+          overtimeData,
+          fringeBenefitData,
+        }),
+      });
 
-       if (data.success) {
-         setStatus('saved');
-         setSuccessMessage(`Payroll saved for ${data.data.processedCount} employees!`);
-       } else {
-         setStatus('error');
-         setError(data.error || 'Failed to save payroll');
-       }
-     } catch (error) {
-       console.error('Error saving payroll:', error);
-       setStatus('error');
-       setError('Network error while saving');
-     } finally {
-       setSaving(false);
-     }
-   };
+      const data = await res.json();
+
+      if (data.success) {
+        setStatus('saved');
+        setSuccessMessage(`Payroll saved for ${data.data.processedCount} employees!`);
+      } else {
+        setStatus('error');
+        setError(data.error || 'Failed to save payroll');
+      }
+    } catch (error) {
+      console.error('Error saving payroll:', error);
+      setStatus('error');
+      setError('Network error while saving');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleGeneratePayslips = async () => {
-    // TODO: Implement batch payslip generation
     alert('Payslip generation would redirect to Payslips page');
   };
 
-const totals = useMemo(() => payrollRows.reduce((acc, row) => {
-     acc.basicSalary += row.basicSalary;
-     acc.allowances += row.allowances;
-     acc.overtimePay += row.overtimePay;
-     acc.bonuses += row.bonuses;
-     acc.otherEarnings += row.otherEarnings;
-     acc.grossEarnings += row.grossEarnings;
-     acc.paye += row.paye;
-     acc.pensionEE += row.pensionEE;
-     acc.pensionER += row.pensionER;
-     acc.tevetLevy += row.tevetLevy;
-     acc.fringeBenefitBase += row.fringeBenefitBase;
-     acc.fringeBenefitTax += row.fringeBenefitTax;
-     acc.otherDeductions += row.otherDeductions;
-     acc.totalDeductions += row.totalDeductions;
-     acc.netPay += row.netPay;
-     acc.employerCost += row.employerCost;
-     return acc;
-   }, {
-     basicSalary: 0, allowances: 0, overtimePay: 0, bonuses: 0, otherEarnings: 0,
-     grossEarnings: 0, paye: 0, pensionEE: 0, pensionER: 0, tevetLevy: 0,
-     fringeBenefitBase: 0, fringeBenefitTax: 0,
-     otherDeductions: 0, totalDeductions: 0, netPay: 0, employerCost: 0,
-   }), [payrollRows]);
+  const totals = useMemo(() => payrollRows.reduce((acc, row) => {
+    acc.basicSalary += row.basicSalary;
+    acc.allowances += row.allowances;
+    acc.overtimePay += row.overtimePay;
+    acc.bonuses += row.bonuses;
+    acc.otherEarnings += row.otherEarnings;
+    acc.grossEarnings += row.grossEarnings;
+    acc.paye += row.paye;
+    acc.pensionEE += row.pensionEE;
+    acc.pensionER += row.pensionER;
+    acc.tevetLevy += row.tevetLevy;
+    acc.fringeBenefitBase += row.fringeBenefitBase;
+    acc.fringeBenefitTax += row.fringeBenefitTax;
+    acc.otherDeductions += row.otherDeductions;
+    acc.totalDeductions += row.totalDeductions;
+    acc.netPay += row.netPay;
+    acc.employerCost += row.employerCost;
+    return acc;
+  }, {
+    basicSalary: 0, allowances: 0, overtimePay: 0, bonuses: 0, otherEarnings: 0,
+    grossEarnings: 0, paye: 0, pensionEE: 0, pensionER: 0, tevetLevy: 0,
+    fringeBenefitBase: 0, fringeBenefitTax: 0,
+    otherDeductions: 0, totalDeductions: 0, netPay: 0, employerCost: 0,
+  }), [payrollRows]);
+
+  const compressionRatio = Math.min(scrollX / 200, 1);
+  const empIdW = 96 - (96 - 40) * compressionRatio;
+  const nameW = 160 - (160 - 64) * compressionRatio;
+  const deptW = 112 - (112 - 48) * compressionRatio;
+  const actionsW = 96 - (96 - 40) * compressionRatio;
+  const nameLeft = empIdW;
+  const deptLeft = empIdW + nameW;
+  const actionsLeft = empIdW + nameW + deptW;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -497,47 +619,61 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
 
         {/* Payroll Register */}
         <div className="card">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" ref={tableContainerRef} id="payroll-table-container">
             <table className="table min-w-[1400px]">
                 <thead className="sticky top-0 bg-gray-50">
-                 <tr>
-                   <th className="w-24">Emp ID</th>
-                   <th className="w-40">Name</th>
-                   <th className="w-28">Department</th>
-                   <th className="w-28 text-right">Basic</th>
-                   <th className="w-28 text-right">Allowances</th>
-                   <th className="w-24 text-right">Normal OT</th>
-                   <th className="w-24 text-right">Public OT</th>
-                   <th className="w-24 text-right">Off-day OT</th>
-                   <th className="w-28 text-right">OT Pay</th>
-                   <th className="w-24 text-right">Bonuses</th>
-                   <th className="w-28 text-right">Other Earn</th>
-                   <th className="w-28 text-right font-medium bg-yellow-50">Gross</th>
-                   <th className="w-24 text-right bg-red-50">PAYE</th>
-                   <th className="w-24 text-right bg-red-50">Pension EE</th>
-                   <th className="w-24 text-right bg-green-50">Pension ER</th>
-                   <th className="w-24 text-right bg-red-50">TEVET Levy</th>
-                   <th className="w-28 text-right bg-yellow-50">FBT Base</th>
-                   <th className="w-24 text-right bg-red-50">FBT</th>
-                   <th className="w-24 text-right bg-red-50">Other Ded</th>
-                   <th className="w-28 text-right font-medium bg-red-50">Total Ded</th>
-                   <th className="w-28 text-right font-medium bg-green-50">Net Pay</th>
-                   <th className="w-28 text-right font-medium bg-blue-50">Employer Cost</th>
-                 </tr>
-               </thead>
+                  <tr>
+                    <th className="sticky z-30 bg-gray-50 border-r border-gray-200" style={{ width: `${empIdW}px`, left: 0 }}>Emp ID</th>
+                    <th className="sticky z-20 bg-gray-50 border-r border-gray-200" style={{ width: `${nameW}px`, left: `${nameLeft}px` }}>Name</th>
+                    <th className="sticky z-10 bg-gray-50 border-r border-gray-200" style={{ width: `${deptW}px`, left: `${deptLeft}px` }}>Department</th>
+                    <th className="sticky bg-gray-50 border-r border-gray-200 text-center" style={{ width: `${actionsW}px`, left: `${actionsLeft}px` }}>Actions</th>
+                    <th className="w-28 text-right">Basic</th>
+                    <th className="w-28 text-right">Allowances</th>
+                    <th className="w-24 text-right">Normal OT</th>
+                    <th className="w-24 text-right">Public OT</th>
+                    <th className="w-24 text-right">Off-day OT</th>
+                    <th className="w-28 text-right">OT Pay</th>
+                    <th className="w-24 text-right">Bonuses</th>
+                    <th className="w-28 text-right">Other Earn</th>
+                    <th className="w-28 text-right font-medium bg-yellow-50">Gross</th>
+                    <th className="w-24 text-right bg-red-50">PAYE</th>
+                    <th className="w-24 text-right bg-red-50">Pension EE</th>
+                    <th className="w-24 text-right bg-green-50">Pension ER</th>
+                    <th className="w-24 text-right bg-red-50">TEVET Levy</th>
+                    <th className="w-28 text-right bg-yellow-50">FBT Base</th>
+                    <th className="w-24 text-right bg-amber-50">FBT</th>
+                    <th className="w-24 text-right bg-red-50">Other Ded</th>
+                    <th className="w-28 text-right font-medium bg-red-50">Total Ded</th>
+                    <th className="w-28 text-right font-medium bg-green-50">Net Pay</th>
+                    <th className="w-28 text-right font-medium bg-blue-50">Employer Cost</th>
+                  </tr>
+                </thead>
               <tbody>
-{payrollRows.length === 0 ? (
-                   <tr>
-                     <td colSpan={20} className="px-4 py-8 text-center text-gray-500">
-                       Select a period and click Refresh to load employees
-                     </td>
-                   </tr>
-                 ) : (
-                  payrollRows.map((row) => (
+ {payrollRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={20} className="px-4 py-8 text-center text-gray-500">
+                      Select a period and click Refresh to load employees
+                    </td>
+                  </tr>
+                ) : (
+                  payrollRows.map((row) => {
+                    const rowBenefits = employeeBenefits[row.id] || [];
+                    return (
+                      <React.Fragment key={row.id}>
                     <tr key={row.id} className={!row.isValid ? 'bg-red-50' : ''}>
-                      <td className="font-mono text-sm">{row.employeeId}</td>
-                      <td className="font-medium">{row.employeeName}</td>
-                      <td className="text-sm">{row.department}</td>
+                      <td className="font-mono text-sm sticky z-10 bg-white border-r border-gray-100" style={{ width: `${empIdW}px`, left: 0 }}>{row.employeeId}</td>
+                      <td className="font-medium sticky z-10 bg-white border-r border-gray-100" style={{ width: `${nameW}px`, left: `${nameLeft}px` }}>{row.employeeName}</td>
+                      <td className="text-sm sticky z-10 bg-white border-r border-gray-100" style={{ width: `${deptW}px`, left: `${deptLeft}px` }}>{row.department}</td>
+                      <td className="text-center sticky z-10 bg-white border-r border-gray-100" style={{ width: `${actionsW}px`, left: `${actionsLeft}px` }}>
+                        <button
+                          onClick={() => openBenefitModal(row.id)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors"
+                          title="Add Fringe Benefit"
+                        >
+                          <Plus className="h-3 w-3" />
+                          <span>FBT</span>
+                        </button>
+                      </td>
                       <td className="text-right font-mono">
                         <input
                           type="number"
@@ -613,7 +749,7 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
                        <td className="text-right font-mono text-green-600">{formatCurrency(row.pensionER)}</td>
                        <td className="text-right font-mono text-red-600">{formatCurrency(row.tevetLevy)}</td>
                        <td className="text-right font-mono text-yellow-600">{formatCurrency(row.fringeBenefitBase)}</td>
-                       <td className="text-right font-mono text-red-600">{formatCurrency(row.fringeBenefitTax)}</td>
+                       <td className="text-right font-mono text-amber-600">{formatCurrency(row.fringeBenefitTax)}</td>
                        <td className="text-right font-mono">
                          <input
                            type="number"
@@ -628,11 +764,48 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
                       <td className="text-right font-mono font-medium text-green-600">{formatCurrency(row.netPay)}</td>
                       <td className="text-right font-mono font-medium text-blue-600">{formatCurrency(row.employerCost)}</td>
                     </tr>
-                  ))
+                    {rowBenefits.length > 0 && (
+                      <tr className="bg-gray-50/50">
+                        <td colSpan={23} className="px-4 py-1">
+                          <div className="flex flex-wrap gap-1">
+                            {rowBenefits.map((benefit, idx) => {
+                              const valuation = calculateBenefitValue(benefit);
+                              const isExcluded = valuation.classification === 'EXCLUDED';
+                              return (
+                                <span
+                                  key={idx}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs ${
+                                    isExcluded
+                                      ? 'border border-dashed border-gray-400 bg-gray-100 text-gray-500'
+                                      : 'border border-amber-200 bg-amber-50 text-amber-800'
+                                  }`}
+                                >
+                                  <span>{formatBenefitType(benefit.type)}</span>
+                                  <span className="font-mono">
+                                    {isExcluded ? '0.00' : formatCurrency(valuation.selectedTaxableValue)}
+                                  </span>
+                                  {isExcluded && <span className="text-[10px]">(Excl)</span>}
+                                  <button
+                                    onClick={() => removeBenefit(row.id, idx)}
+                                    className="ml-0.5 text-gray-400 hover:text-red-600"
+                                    title="Remove benefit"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                      </React.Fragment>
+                    );
+                  })
                 )}
                 {/* Totals Row */}
                 <tr className="bg-gray-50 font-semibold">
-                  <td colSpan={3} className="text-right">TOTALS</td>
+                  <td colSpan={4} className="text-right">TOTALS</td>
                   <td className="text-right font-mono">{formatCurrency(totals.basicSalary)}</td>
                   <td className="text-right font-mono">{formatCurrency(totals.allowances)}</td>
                   <td></td>
@@ -647,7 +820,7 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
                   <td className="text-right font-mono text-green-600">{formatCurrency(totals.pensionER)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.tevetLevy)}</td>
                   <td className="text-right font-mono text-yellow-600">{formatCurrency(totals.fringeBenefitBase)}</td>
-                  <td className="text-right font-mono text-red-600">{formatCurrency(totals.fringeBenefitTax)}</td>
+                  <td className="text-right font-mono text-amber-600">{formatCurrency(totals.fringeBenefitTax)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.otherDeductions)}</td>
                   <td className="text-right font-mono text-red-600">{formatCurrency(totals.totalDeductions)}</td>
                   <td className="text-right font-mono text-green-600">{formatCurrency(totals.netPay)}</td>
@@ -676,6 +849,216 @@ const totals = useMemo(() => payrollRows.reduce((acc, row) => {
             </div>
           )}
         </div>
+
+        {/* Fringe Benefit Modal */}
+        {benefitModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Add Fringe Benefit</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="label">Benefit Type</label>
+                    <select
+                      value={benefitForm.type}
+                      onChange={(e) => setBenefitForm((prev) => ({ ...prev, type: e.target.value as FringeBenefitType }))}
+                      className="input"
+                    >
+                      {Object.entries(FringeBenefitType).map(([_key, val]) => (
+                        <option key={val} value={val}>{formatBenefitType(val)}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label">Amount (MWK) *</label>
+                    <input
+                      type="number"
+                      value={benefitForm.amount}
+                      onChange={(e) => setBenefitForm((prev) => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                      className="input"
+                      min="0"
+                      step="1000"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Description</label>
+                    <input
+                      type="text"
+                      value={benefitForm.description}
+                      onChange={(e) => setBenefitForm((prev) => ({ ...prev, description: e.target.value }))}
+                      className="input"
+                      placeholder="Optional description"
+                    />
+                  </div>
+
+                  {benefitForm.type === FringeBenefitType.MOTOR_VEHICLE && (
+                    <div>
+                      <label className="label">Original Cost (MWK)</label>
+                      <input
+                        type="number"
+                        value={benefitForm.originalCost}
+                        onChange={(e) => setBenefitForm((prev) => ({ ...prev, originalCost: parseFloat(e.target.value) || 0 }))}
+                        className="input"
+                        min="0"
+                        step="1000"
+                      />
+                    </div>
+                  )}
+
+                  {(benefitForm.type === FringeBenefitType.HOUSING_EMPLOYER_OWNED || benefitForm.type === FringeBenefitType.HOUSING_RENTED) && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="furnished"
+                          checked={benefitForm.furnished}
+                          onChange={(e) => setBenefitForm((prev) => ({ ...prev, furnished: e.target.checked }))}
+                          className="h-4 w-4"
+                        />
+                        <label htmlFor="furnished" className="label mb-0">Furnished</label>
+                      </div>
+                      <div>
+                        <label className="label">Ownership Type</label>
+                        <select
+                          value={benefitForm.ownershipType}
+                          onChange={(e) => setBenefitForm((prev) => ({ ...prev, ownershipType: e.target.value as 'EMPLOYER_OWNED' | 'RENTED' }))}
+                          className="input"
+                        >
+                          <option value="EMPLOYER_OWNED">Employer Owned</option>
+                          <option value="RENTED">Rented</option>
+                        </select>
+                      </div>
+                      {benefitForm.ownershipType === 'RENTED' && (
+                        <>
+                          <div>
+                            <label className="label">Employer Rental Cost (MWK)</label>
+                            <input
+                              type="number"
+                              value={benefitForm.employerRentalCost}
+                              onChange={(e) => setBenefitForm((prev) => ({ ...prev, employerRentalCost: parseFloat(e.target.value) || 0 }))}
+                              className="input"
+                              min="0"
+                              step="1000"
+                            />
+                          </div>
+                          <div>
+                            <label className="label">Open Market Rental Value (MWK)</label>
+                            <input
+                              type="number"
+                              value={benefitForm.openMarketRentalValue}
+                              onChange={(e) => setBenefitForm((prev) => ({ ...prev, openMarketRentalValue: parseFloat(e.target.value) || 0 }))}
+                              className="input"
+                              min="0"
+                              step="1000"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {benefitForm.type === FringeBenefitType.SCHOOL_FEES && (
+                    <div>
+                      <label className="label">Payment Method</label>
+                      <select
+                        value={benefitForm.paymentMethod}
+                        onChange={(e) => setBenefitForm((prev) => ({ ...prev, paymentMethod: e.target.value as BenefitPaymentMethod }))}
+                        className="input"
+                      >
+                        <option value={BenefitPaymentMethod.DIRECT_TO_INSTITUTION}>Direct to Institution</option>
+                        <option value={BenefitPaymentMethod.CASH_TO_EMPLOYEE}>Cash to Employee</option>
+                        <option value={BenefitPaymentMethod.ADVANCE}>Advance</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {benefitForm.type === FringeBenefitType.CONCESSIONARY_LOAN && (
+                    <>
+                      <div>
+                        <label className="label">Principal Amount (MWK)</label>
+                        <input
+                          type="number"
+                          value={benefitForm.principalAmount}
+                          onChange={(e) => setBenefitForm((prev) => ({ ...prev, principalAmount: parseFloat(e.target.value) || 0 }))}
+                          className="input"
+                          min="0"
+                          step="1000"
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Benchmark Interest Rate (%)</label>
+                        <input
+                          type="number"
+                          value={benefitForm.benchmarkInterestRate}
+                          onChange={(e) => setBenefitForm((prev) => ({ ...prev, benchmarkInterestRate: parseFloat(e.target.value) || 0 }))}
+                          className="input"
+                          min="0"
+                          step="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Employer Interest Rate (%)</label>
+                        <input
+                          type="number"
+                          value={benefitForm.employerInterestRate}
+                          onChange={(e) => setBenefitForm((prev) => ({ ...prev, employerInterestRate: parseFloat(e.target.value) || 0 }))}
+                          className="input"
+                          min="0"
+                          step="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Effective To</label>
+                        <input
+                          type="date"
+                          value={benefitForm.effectiveTo}
+                          onChange={(e) => setBenefitForm((prev) => ({ ...prev, effectiveTo: e.target.value }))}
+                          className="input"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="label">Employee Contribution (MWK)</label>
+                    <input
+                      type="number"
+                      value={benefitForm.employeeContribution}
+                      onChange={(e) => setBenefitForm((prev) => ({ ...prev, employeeContribution: parseFloat(e.target.value) || 0 }))}
+                      className="input"
+                      min="0"
+                      step="1000"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Effective From</label>
+                    <input
+                      type="date"
+                      value={benefitForm.effectiveFrom}
+                      onChange={(e) => setBenefitForm((prev) => ({ ...prev, effectiveFrom: e.target.value }))}
+                      className="input"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setBenefitModalOpen(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button onClick={addBenefit} className="btn-primary">
+                    Add Benefit
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

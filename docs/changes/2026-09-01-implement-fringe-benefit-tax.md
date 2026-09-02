@@ -106,6 +106,7 @@ const employerCost = calculateEmployerCost(grossEarnings, pensionER, tevetLevy)
 - **`fbtSnapshot` population** — if not populated, historical FBT calculations cannot be reproduced. This plan includes it explicitly.
 - **Effective-date rule failure** — if a benefit has no matching rule for its effective date, the engine throws `TaxRuleNotFoundError`. The UI must surface this clearly.
 - **`decimal.js` dependency** — new runtime dependency, already added to `package.json`.
+- **Migration must be applied before code that references new columns** — during development the migration SQL was generated but not applied to the database, causing a 500 error on every payroll save until `npx prisma migrate deploy` was run. See `docs/bugsfix/2026-09-01-payroll-save-500-migration-not-applied.md`.
 
 ## Test plan
 
@@ -138,4 +139,5 @@ Deferred from this implementation (see plan §10):
 
 - `docs/changes/2026-09-01-fringe-benefit-tax-audit.md` — the audit that triggered this work
 - `docs/FRINGE-BENEFIT-TAX-PROMPT.md` — the legal/architectural spec
+- `docs/bugsfix/2026-09-01-payroll-save-500-migration-not-applied.md` — the 500 error bug caused by the migration not being applied during development
 - `docs/IMPROVEMENTS.md` — no FBT-specific entry added in this change
