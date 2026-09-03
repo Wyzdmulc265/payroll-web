@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import prisma from '@/lib/prisma';
+import prisma, { type Prisma } from '@/lib/prisma';
 import {
   getCurrentUser,
   unauthorized,
@@ -96,7 +96,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: Prisma.UserUpdateInput = {};
     if (validated.email) updateData.email = validated.email;
     if (validated.password) updateData.passwordHash = await hashPassword(validated.password);
     if (validated.status) updateData.status = validated.status;

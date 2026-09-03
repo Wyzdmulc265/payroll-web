@@ -43,10 +43,15 @@ describe('business management (Phase 9)', () => {
   let tokenAdminA: string;
 
   beforeEach(async () => {
+    await prisma.fringeBenefit.deleteMany();
+    await prisma.payrollRecord.deleteMany();
+    await prisma.auditLog.deleteMany();
+    await prisma.passwordReset.deleteMany();
     await prisma.session.deleteMany();
+    await prisma.settings.deleteMany();
+    await prisma.employee.deleteMany();
     await prisma.user.deleteMany();
     await prisma.business.deleteMany();
-    await prisma.employee.deleteMany();
 
     const bizA = await prisma.business.create({ data: { name: 'Biz A' } });
     const adminAHash = await bcrypt.hash('AdminA123', 10);
@@ -129,7 +134,7 @@ describe('business management (Phase 9)', () => {
     const user = await prisma.user.create({
       data: { email: 'op@deact.com', passwordHash: await bcrypt.hash('OpPass123', 10), role: 'ADMIN', status: 'ACTIVE', businessId: biz.id },
     });
-    const token = await loginAs(user.id);
+    await loginAs(user.id);
 
     const req = makeRequest(`http://localhost/api/businesses/${biz.id}`, sessionCookie(tokenSuper), 'PUT', { status: 'INACTIVE' });
     const res = await putBusiness(req, await routeContext(biz.id));

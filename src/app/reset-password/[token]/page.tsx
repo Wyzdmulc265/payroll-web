@@ -34,7 +34,7 @@ export default function ResetPasswordPage({ params }: { params: Promise<{ token:
     e.preventDefault();
     setServerError(null);
     
-    let errs = validatePassword(password);
+    const errs = validatePassword(password);
     if (password !== confirm) {
       errs.confirm = 'Passwords do not match';
     }

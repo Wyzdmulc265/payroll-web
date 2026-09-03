@@ -3,11 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
-  FileText, Download, Filter, Loader2, BarChart3, 
-  Building2, Users, DollarSign, CreditCard, Calendar,
-  ChevronLeft, ChevronRight, Table, Download as DownloadIcon
+  Loader2, Table, Download as DownloadIcon
 } from 'lucide-react';
-import { formatCurrency } from '@/lib/payroll-engine';
 import { escapeCsvCell, csvField } from '@/lib/csv';
 
 const REPORT_TYPES = [
@@ -38,7 +35,6 @@ export default function ReportsPage() {
   const [selectedDepartment, setSelectedDepartment] = useState<string>('All');
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const currentYear = new Date().getFullYear();
@@ -253,11 +249,11 @@ export default function ReportsPage() {
           {/* Export Buttons */}
           {reportData && (
             <div className="flex items-center gap-3 mt-4 pt-4 border-t border-gray-200">
-              <button onClick={exportToCSV} disabled={exporting} className="btn-secondary">
+              <button onClick={exportToCSV} className="btn-secondary">
                 <DownloadIcon className="h-4 w-4 mr-2" />
                 Export CSV
               </button>
-              <button onClick={exportToExcel} disabled={exporting} className="btn-secondary">
+              <button onClick={exportToExcel} className="btn-secondary">
                 <Table className="h-4 w-4 mr-2" />
                 Export Excel
               </button>

@@ -4,10 +4,10 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import {
-  Settings, Building2, DollarSign, CreditCard, Shield,
+  Settings, Building2, DollarSign, Shield,
   Loader2, Save, AlertCircle, Plus, Edit, Trash2,
-  Eye, EyeOff, Key, Database, Cpu, Globe, Wrench, Table2,
-  ChevronDown, ChevronUp, RefreshCw,
+  Wrench, Table2,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { formatCurrency, previewPAYE } from '@/lib/payroll-engine';
 import { FbtRuleType, FbtClassification, FringeBenefitType } from '@/lib/fbt-engine';
@@ -149,8 +149,6 @@ interface BandRow {
   rate: number;
 }
 
-const BAND_START_INDEX = 1;
-
 function deriveBandCount(settingsMap: Record<string, string>): number {
   let maxIdx = 0;
   for (const key of Object.keys(settingsMap)) {
@@ -231,7 +229,7 @@ function extractFbtRules(settingsMap: Record<string, string>): Array<{
         classification: rule.classification,
         ruleKey: key
       });
-    } catch (error) {
+    } catch {
       // Skip invalid JSON
       continue;
     }
@@ -267,6 +265,134 @@ export default function SettingsPage() {
   });
   const [accountErrors, setAccountErrors] = useState<Record<string, string>>({});
   const [accountSaving, setAccountSaving] = useState(false);
+
+  const [settings, setSettings] = useState<Setting[]>([]);
+  const [activeCategory, setActiveCategory] = useState<Category>('COMPANY');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [showAdvancedModal, setShowAdvancedModal] = useState(false);
+  const [editingSetting, setEditingSetting] = useState<Setting | null>(null);
+  const [formData, setFormData] = useState({
+    key: '',
+    value: '',
+    description: '',
+    category: 'COMPANY' as Category,
+    effectiveFrom: new Date().toISOString().split('T')[0],
+  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    paye: true,
+    pension: true,
+    other: true,
+    'fbt-rules': true,
+  });
+
+  const [companyForm, setCompanyForm] = useState<Record<string, string>>({});
+  const [payrollForm, setPayrollForm] = useState<Record<string, string>>({});
+  const [pensionForm, setPensionForm] = useState<Record<string, string>>({});
+  const [otherStatutoryForm, setOtherStatutoryForm] = useState<Record<string, string>>({});
+  const [systemForm, setSystemForm] = useState<Record<string, string>>({});
+  const [bands, setBands] = useState<BandRow[]>([]);
+
+  const settingsMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const s of settings) map[s.key] = s.value;
+    return map;
+  }, [settings]);
+
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      if (data.success) {
+        setSettings(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSettings();
+  }, [fetchSettings]);
+
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    for (const s of settings) map[s.key] = s.value;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCompanyForm(prev => {
+      const next: Record<string, string> = {};
+      COMPANY_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+
+    setPayrollForm(prev => {
+      const next: Record<string, string> = {};
+      PAYROLL_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+
+    setPensionForm(prev => {
+      const next: Record<string, string> = {};
+      PENSION_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+
+    setOtherStatutoryForm(prev => {
+      const next: Record<string, string> = {};
+      OTHER_STATUTORY_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+
+    setSystemForm(prev => {
+      const next: Record<string, string> = {};
+      SYSTEM_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+
+    setBands(prev => {
+      const next = bandsFromMap(map);
+      return prev.length === next.length && prev.every((b, i) => b.from === next[i].from && b.to === next[i].to && b.rate === next[i].rate)
+        ? prev
+        : next;
+    });
+  }, [settings]);
+
+  const saveToApi = useCallback(async (category: Category, updates: Record<string, string>) => {
+    const entries = Object.entries(updates);
+    const payload = entries.map(([key, value]) => ({ key, value, category }));
+    const res = await fetch('/api/settings/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Batch save failed');
+    }
+    await fetchSettings();
+  }, [fetchSettings]);
+
+  const handleDelete = useCallback(async (key: string) => {
+    if (!confirm(`Delete setting "${key}"?`)) return;
+    try {
+      const res = await fetch(`/api/settings?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setSettings(prev => prev.filter(s => s.key !== key));
+        showToast(`Deleted "${key}"`);
+      } else {
+        showToast(data.error || 'Delete failed');
+      }
+    } catch {
+      showToast('Network error');
+    }
+  }, [showToast]);
 
   if (isSuperAdmin) {
     const validateAccountForm = (): Record<string, string> => {
@@ -423,138 +549,6 @@ export default function SettingsPage() {
     );
   }
 
-  const [settings, setSettings] = useState<Setting[]>([]);
-  const [activeCategory, setActiveCategory] = useState<Category>('COMPANY');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [showAdvancedModal, setShowAdvancedModal] = useState(false);
-  const [editingSetting, setEditingSetting] = useState<Setting | null>(null);
-  const [formData, setFormData] = useState({
-    key: '',
-    value: '',
-    description: '',
-    category: 'COMPANY' as Category,
-    effectiveFrom: new Date().toISOString().split('T')[0],
-  });
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    paye: true,
-    pension: true,
-    other: true,
-    'fbt-rules': true,
-  });
-
-  // Local form states per category
-  const [companyForm, setCompanyForm] = useState<Record<string, string>>({});
-  const [payrollForm, setPayrollForm] = useState<Record<string, string>>({});
-  const [pensionForm, setPensionForm] = useState<Record<string, string>>({});
-  const [otherStatutoryForm, setOtherStatutoryForm] = useState<Record<string, string>>({});
-  const [systemForm, setSystemForm] = useState<Record<string, string>>({});
-  const [fbtRulesForm, setFbtRulesForm] = useState<Record<string, string>>({});
-  const [bands, setBands] = useState<BandRow[]>([]);
-
-  const settingsMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const s of settings) map[s.key] = s.value;
-    return map;
-  }, [settings]);
-
-  const fetchSettings = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
-      if (data.success) {
-        setSettings(data.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch settings:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  // Sync local forms when settings change
-  useEffect(() => {
-    const map: Record<string, string> = {};
-    for (const s of settings) map[s.key] = s.value;
-
-    setCompanyForm(prev => {
-      const next: Record<string, string> = {};
-      COMPANY_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
-      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-    });
-
-    setPayrollForm(prev => {
-      const next: Record<string, string> = {};
-      PAYROLL_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
-      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-    });
-
-    setPensionForm(prev => {
-      const next: Record<string, string> = {};
-      PENSION_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
-      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-    });
-
-    setOtherStatutoryForm(prev => {
-      const next: Record<string, string> = {};
-      OTHER_STATUTORY_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
-      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-    });
-
-    setSystemForm(prev => {
-      const next: Record<string, string> = {};
-      SYSTEM_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
-      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-    });
-
-    // Sync FBT rules form - we don't have predefined fields for this as it's dynamic
-    // We'll handle FBT rules separately in the render function
-
-    setBands(prev => {
-      const next = bandsFromMap(map);
-      return prev.length === next.length && prev.every((b, i) => b.from === next[i].from && b.to === next[i].to && b.rate === next[i].rate)
-        ? prev
-        : next;
-    });
-  }, [settings]);
-
-  const saveToApi = useCallback(async (category: Category, updates: Record<string, string>) => {
-    const entries = Object.entries(updates);
-    const payload = entries.map(([key, value]) => ({ key, value, category }));
-    const res = await fetch('/api/settings/batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Batch save failed');
-    }
-    await fetchSettings();
-  }, [fetchSettings]);
-
-  const handleDelete = useCallback(async (key: string) => {
-    if (!confirm(`Delete setting "${key}"?`)) return;
-    try {
-      const res = await fetch(`/api/settings?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        setSettings(prev => prev.filter(s => s.key !== key));
-        showToast(`Deleted "${key}"`);
-      } else {
-        showToast(data.error || 'Delete failed');
-      }
-    } catch {
-      showToast('Network error');
-    }
-  }, [showToast]);
-
   const handleAdvancedSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -586,7 +580,7 @@ export default function SettingsPage() {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const SectionHeader = ({ id, title, defaultOpen = true }: { id: string; title: string; defaultOpen?: boolean }) => (
+  const SectionHeader = ({ id, title }: { id: string; title: string }) => (
     <button
       type="button"
       onClick={() => toggleSection(id)}
@@ -748,7 +742,7 @@ export default function SettingsPage() {
           {expandedSections.paye !== false && (
             <div className="p-4 space-y-4">
               <p className="text-sm text-gray-600">
-                Define the income ranges and tax rates for PAYE calculations. Leave the upper limit of the last band empty to mean "and above".
+                Define the income ranges and tax rates for PAYE calculations. Leave the upper limit of the last band empty to mean &quot;and above&quot;.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -972,7 +966,7 @@ export default function SettingsPage() {
                       {extractFbtRules(settingsMap).length === 0 && (
                         <tr>
                           <td colSpan={7} className="py-4 text-center text-gray-500">
-                            No FBT rules configured. Add rules using the "+ Add Setting" button in Advanced mode.
+                            No FBT rules configured. Add rules using the &quot;+ Add Setting&quot; button in Advanced mode.
                           </td>
                         </tr>
                       )}

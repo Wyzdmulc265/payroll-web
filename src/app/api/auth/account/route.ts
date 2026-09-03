@@ -4,8 +4,6 @@ import prisma from '@/lib/prisma';
 import {
   getCurrentUser,
   unauthorized,
-  requirePermission,
-  Permission,
   verifyPassword,
   hashPassword,
   updateOwnAccountSchema,
@@ -37,13 +35,6 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const validated = updateOwnAccountSchema.parse(body);
 
-    if (validated.email === undefined && validated.newPassword === undefined) {
-      return NextResponse.json(
-        { success: false, error: 'No changes provided' },
-        { status: 400 }
-      );
-    }
-
     const existing = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { id: true, email: true, passwordHash: true, role: true, status: true, businessId: true },
@@ -58,6 +49,13 @@ export async function PATCH(request: NextRequest) {
     if (!(await verifyPassword(validated.currentPassword, existing.passwordHash))) {
       return NextResponse.json(
         { success: false, error: 'Current password is incorrect' },
+        { status: 400 }
+      );
+    }
+
+    if (validated.email === undefined && validated.newPassword === undefined) {
+      return NextResponse.json(
+        { success: false, error: 'No changes provided' },
         { status: 400 }
       );
     }

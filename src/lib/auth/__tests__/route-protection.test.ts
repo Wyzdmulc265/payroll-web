@@ -18,7 +18,6 @@ function sessionCookie(token: string): string {
 describe('route protection', () => {
   let adminToken: string;
   let viewerToken: string;
-  let businessId: string;
 
   beforeEach(async () => {
     await prisma.session.deleteMany();
@@ -27,7 +26,6 @@ describe('route protection', () => {
     await prisma.employee.deleteMany();
 
     const biz = await prisma.business.create({ data: { name: 'Route Test Business' } });
-    businessId = biz.id;
 
     const adminHash = await bcrypt.hash('AdminTest123', 10);
     const viewerHash = await bcrypt.hash('ViewerTest123', 10);

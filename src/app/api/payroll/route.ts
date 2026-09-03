@@ -239,9 +239,8 @@ const result = calculatePayroll({
       }
 
       // Create payroll records + fringe benefits + audit log in a transaction.
-      let createdRecords: { id: string }[];
       try {
-        createdRecords = await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx) => {
           const records = await Promise.all(
             payrollRecords.map(pr => tx.payrollRecord.create({
               data: pr.record,

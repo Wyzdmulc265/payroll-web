@@ -14,7 +14,7 @@ import {
   DEFAULT_STATUTORY_CONFIG,
   selectEffectiveSettings,
 } from './payroll-engine';
-import { FringeBenefitType, BenefitPaymentMethod } from './fbt-engine';
+import { FringeBenefitType } from './fbt-engine';
 
 describe('string Decimal regression guards', () => {
   // Prisma Decimal values serialize to strings over JSON. These tests ensure a

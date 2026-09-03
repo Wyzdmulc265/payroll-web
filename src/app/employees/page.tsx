@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { 
-  Users, Plus, Search, Filter, Edit, Trash2, Eye, 
-  Loader2, AlertCircle, CheckCircle, XCircle, ChevronLeft, ChevronRight,
-  Download, Upload
+  Plus, Search, Edit, Trash2, 
+  Loader2, XCircle, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/payroll-engine';
 import Link from 'next/link';

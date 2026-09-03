@@ -62,7 +62,7 @@ export default function ForgotPasswordPage() {
               <h2 className="text-lg font-semibold text-gray-900 mb-2">Check your inbox</h2>
               <p className="text-sm text-gray-500 mb-6">
                 If an account exists for <strong>{email.trim().toLowerCase()}</strong>, reset
-                instructions have been sent. Check your spam folder if you don't see it.
+                instructions have been sent. Check your spam folder if you don&apos;t see it.
               </p>
               <Link href="/login" className="btn-primary inline-flex items-center gap-2">
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />

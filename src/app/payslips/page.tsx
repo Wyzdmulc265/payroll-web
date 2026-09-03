@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
-  FileText, Search, Filter, Download, Eye, Printer, Loader2,
-  ChevronLeft, ChevronRight, Building2, User, Calendar, Banknote,
-  CreditCard, Building, AlertCircle, CheckCircle, XCircle
+  Download, Printer, Loader2,
+  ChevronLeft, AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/payroll-engine';
 
@@ -66,10 +65,6 @@ interface Employee {
   fullName: string;
   department: string;
   isActive: boolean;
-}
-
-interface PeriodOption {
-  period: string;
 }
 
 export default function PayslipsPage() {

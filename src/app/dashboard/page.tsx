@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
-  TrendingUp, Users, DollarSign, CreditCard, Banknote,
-  Building, Building2, Loader2, Calendar, RefreshCw,
+  Users, DollarSign, CreditCard, Banknote,
+  Building, Building2, Loader2, RefreshCw,
   BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon
 } from 'lucide-react';
 import {
@@ -62,10 +62,6 @@ interface DashboardData {
       count: number;
     }>;
   };
-}
-
-interface PeriodOption {
-  period: string;
 }
 
 const COLORS = ['#1e40af', '#059669', '#dc2626', '#d97706', '#7c3aed', '#0891b2', '#be185d', '#65a30d'];
@@ -371,7 +367,7 @@ export default function DashboardPage() {
                         paddingAngle={2}
                         dataKey="gross"
                         nameKey="department"
-                        label={({ department, gross, percent }) => `${department}: ${(percent * 100).toFixed(1)}%`}
+                        label={({ department, percent }) => `${department}: ${(percent * 100).toFixed(1)}%`}
                         labelLine={false}
                       >
                         {dashboardData.charts.payrollByDepartment.map((_, index) => (

@@ -31,13 +31,17 @@ describe('audit-logs route (cross-business for SUPER_ADMIN)', () => {
   let bizA: { id: string; name: string };
   let bizB: { id: string; name: string };
   let tokenAdminA: string;
-  let tokenAdminB: string;
   let tokenSuper: string;
   let tokenViewer: string;
 
   beforeEach(async () => {
+    await prisma.fringeBenefit.deleteMany();
+    await prisma.payrollRecord.deleteMany();
     await prisma.auditLog.deleteMany();
+    await prisma.passwordReset.deleteMany();
     await prisma.session.deleteMany();
+    await prisma.settings.deleteMany();
+    await prisma.employee.deleteMany();
     await prisma.user.deleteMany();
     await prisma.business.deleteMany();
 
@@ -70,7 +74,7 @@ describe('audit-logs route (cross-business for SUPER_ADMIN)', () => {
     });
 
     tokenAdminA = await loginAs(adminA.id);
-    tokenAdminB = await loginAs(adminB.id);
+    await loginAs(adminB.id);
     tokenSuper = await loginAs(superUser.id);
     tokenViewer = await loginAs(viewer.id);
   }, 30000);

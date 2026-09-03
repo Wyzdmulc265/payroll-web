@@ -47,7 +47,13 @@ describe('business admin management', () => {
   let tokenAdminA: string;
 
   beforeEach(async () => {
+    await prisma.fringeBenefit.deleteMany();
+    await prisma.payrollRecord.deleteMany();
+    await prisma.auditLog.deleteMany();
+    await prisma.passwordReset.deleteMany();
     await prisma.session.deleteMany();
+    await prisma.settings.deleteMany();
+    await prisma.employee.deleteMany();
     await prisma.user.deleteMany();
     await prisma.business.deleteMany();
 

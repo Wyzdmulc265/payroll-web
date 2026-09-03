@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { 
-  Calculator, Loader2, CheckCircle, XCircle, AlertCircle,
-  FileText, Download, Upload, RefreshCw, Save, Eye,
-  ChevronLeft, ChevronRight, Plus, Minus, Search, Filter
+  Calculator, CheckCircle, AlertCircle,
+  FileText, RefreshCw, Save, Plus
 } from 'lucide-react';
-import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings, previewOvertimePay } from '@/lib/payroll-engine';
+import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings } from '@/lib/payroll-engine';
 import { FringeBenefitType, BenefitPaymentMethod, FringeBenefitInput, calculateBenefitValue } from '@/lib/fbt-engine';
 import { useToast } from '@/hooks/useToast';
 
@@ -51,16 +50,8 @@ interface PayrollRow {
   errors: string[];
 }
 
-interface PayrollPeriod {
-  period: string;
-  periodStart: string;
-  periodEnd: string;
-  status: string;
-}
-
 export default function PayrollPage() {
   const { showToast, Toast } = useToast();
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrollRows, setPayrollRows] = useState<PayrollRow[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
@@ -175,7 +166,6 @@ export default function PayrollPage() {
       const data = await res.json();
       if (data.success) {
         const activeEmployees = (data.data as Employee[]).filter((e) => e.isActive);
-        setEmployees(activeEmployees);
         const rows: PayrollRow[] = activeEmployees.map((emp) => ({
           id: emp.id,
           employeeId: emp.employeeId,
@@ -255,12 +245,14 @@ export default function PayrollPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPeriods();
     fetchConfig();
   }, []);
 
   useEffect(() => {
     if (selectedPeriod) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchEmployees();
       setStatus('idle');
       setError(null);
@@ -285,13 +277,6 @@ export default function PayrollPage() {
   }, []);
 
   const recalculateRowWithBenefits = (row: PayrollRow, benefits: FringeBenefitInput[]): PayrollRow => {
-    const overtimePay = previewOvertimePay(
-      row.normalOvertimeHours,
-      row.publicHolidayOvertimeHours,
-      row.offDayOvertimeHours,
-      row.basicSalary,
-      config!
-    );
     const [year, month] = selectedPeriod.split('-').map(Number);
     const input: PayrollInput = {
       basicSalary: row.basicSalary,
@@ -856,7 +841,7 @@ export default function PayrollPage() {
                       onChange={(e) => setBenefitForm((prev) => ({ ...prev, type: e.target.value as FringeBenefitType }))}
                       className="input"
                     >
-                      {Object.entries(FringeBenefitType).map(([_key, val]) => (
+                      {Object.values(FringeBenefitType).map((val) => (
                         <option key={val} value={val}>{formatBenefitType(val)}</option>
                       ))}
                     </select>

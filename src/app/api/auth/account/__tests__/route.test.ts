@@ -38,12 +38,18 @@ describe('account route', () => {
   const PASSWORD = 'AccountTest123';
 
   beforeEach(async () => {
+    await prisma.fringeBenefit.deleteMany();
+    await prisma.payrollRecord.deleteMany();
+    await prisma.auditLog.deleteMany();
+    await prisma.passwordReset.deleteMany();
     await prisma.session.deleteMany();
+    await prisma.settings.deleteMany();
+    await prisma.employee.deleteMany();
     await prisma.user.deleteMany();
     await prisma.business.deleteMany();
 
     const hash = await bcrypt.hash(PASSWORD, 10);
-    const biz = await prisma.business.create({ data: { name: 'Account Test Biz' } });
+    await prisma.business.create({ data: { name: 'Account Test Biz' } });
     const user = await prisma.user.create({
       data: { email: 'account@test.com', passwordHash: hash, role: 'SUPER_ADMIN', status: 'ACTIVE' },
     });

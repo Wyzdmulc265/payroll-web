@@ -8,7 +8,6 @@ import {
   applyFbtRule,
   FringeBenefitType,
   BenefitPaymentMethod,
-  TaxRuleNotFoundError,
   FbtRuleType,
   FbtClassification,
   FbtRule,

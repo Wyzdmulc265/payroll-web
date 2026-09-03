@@ -32,10 +32,15 @@ describe('admin stats route', () => {
   let tokenAdmin: string;
 
   beforeEach(async () => {
+    await prisma.fringeBenefit.deleteMany();
+    await prisma.payrollRecord.deleteMany();
+    await prisma.auditLog.deleteMany();
+    await prisma.passwordReset.deleteMany();
     await prisma.session.deleteMany();
+    await prisma.settings.deleteMany();
+    await prisma.employee.deleteMany();
     await prisma.user.deleteMany();
     await prisma.business.deleteMany();
-    await prisma.payrollRecord.deleteMany();
 
     const biz = await prisma.business.create({ data: { name: 'Stats Biz' } });
     const adminHash = await bcrypt.hash('AdminPass1', 10);
@@ -48,12 +53,29 @@ describe('admin stats route', () => {
       data: { email: 'super-stats@test.com', passwordHash: superHash, role: 'SUPER_ADMIN', status: 'ACTIVE' },
     });
 
+    const employees = await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        prisma.employee.create({
+          data: {
+            employeeId: `EMP${String(i + 1).padStart(3, '0')}`,
+            firstName: `Emp`,
+            lastName: `${i}`,
+            businessId: biz.id,
+            department: 'IT',
+            position: 'Dev',
+            employmentDate: new Date('2025-01-01'),
+            basicSalary: 1000,
+          },
+        })
+      )
+    );
+
     await prisma.payrollRecord.createMany({
-      data: Array.from({ length: 5 }, (_, i) => ({
+      data: employees.map((emp, i) => ({
         payrollPeriod: `2026-0${i + 1}`,
         periodStart: new Date(`2026-0${i + 1}-01`),
         periodEnd: new Date(`2026-0${i + 1}-28`),
-        employeeId: `emp-${i}`,
+        employeeId: emp.id,
         businessId: biz.id,
         department: 'IT',
         position: 'Dev',
