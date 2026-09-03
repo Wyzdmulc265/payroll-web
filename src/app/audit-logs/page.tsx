@@ -2,12 +2,19 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Download, ChevronDown, ChevronRight, ScrollText } from 'lucide-react';
+import { useCurrentUser } from '@/components/UserContext';
 import {
   AUDIT_ACTION_OPTIONS,
   AUDIT_ENTITY_OPTIONS,
   type AuditLogDto,
 } from '@/lib/audit-constants';
 import { escapeCsvCell, csvField } from '@/lib/csv';
+
+interface BusinessDto {
+  id: string;
+  name: string;
+  status: 'ACTIVE' | 'INACTIVE';
+}
 
 interface AuditLogResponse {
   success: boolean;
@@ -50,6 +57,11 @@ export default function AuditLogsPage() {
   const [entityType, setEntityType] = useState('');
   const [query, setQuery] = useState('');
 
+  const user = useCurrentUser();
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const [businesses, setBusinesses] = useState<BusinessDto[]>([]);
+  const [businessFilter, setBusinessFilter] = useState('');
+
   const buildQuery = useCallback(
     (pageNum: number) => {
       const params = new URLSearchParams({
@@ -61,9 +73,10 @@ export default function AuditLogsPage() {
       if (action) params.set('action', action);
       if (entityType) params.set('entityType', entityType);
       if (query.trim()) params.set('query', query.trim());
+      if (isSuperAdmin && businessFilter) params.set('businessId', businessFilter);
       return params;
     },
-    [startDate, endDate, action, entityType, query]
+    [startDate, endDate, action, entityType, query, isSuperAdmin, businessFilter]
   );
 
   const fetchLogs = useCallback(
@@ -98,6 +111,18 @@ export default function AuditLogsPage() {
     fetchLogs(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    fetch('/api/businesses', { credentials: 'same-origin' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setBusinesses(json.data);
+        }
+      })
+      .catch(() => {});
+  }, [isSuperAdmin]);
 
   function handleFilterSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -194,6 +219,17 @@ export default function AuditLogsPage() {
           <input id="audit-query" type="search" value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder="Action, entity, or description" className="input" />
         </div>
+        {isSuperAdmin && (
+          <div>
+            <label className="label" htmlFor="audit-business">Business</label>
+            <select id="audit-business" value={businessFilter} onChange={(e) => setBusinessFilter(e.target.value)} className="input">
+              <option value="">All businesses</option>
+              {businesses.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="sm:col-span-2 lg:col-span-5">
           <button type="submit" className="btn-primary">Apply Filters</button>
         </div>

@@ -213,7 +213,7 @@ This checklist records the complete authentication, authorization, multi-busines
 
 - [x] Create `GET /api/audit-logs`.
 - [x] Restrict audit logs to ADMIN+ for their business.
-- [x] Define explicit SUPER_ADMIN cross-business audit behavior. *(Decision: SUPER_ADMIN has no audit access until Phase 9 delivers an explicit business-selection flow; no implicit cross-business reads.)*
+- [x] Define explicit SUPER_ADMIN cross-business audit behavior. *(Decision: SUPER_ADMIN has no audit access until Phase 9 delivers an explicit business-selection flow; no implicit cross-business reads.)* **Delivered 2026-09-03** by the SUPER_ADMIN-Only UI change: `READ_AUDIT_LOGS` added to SUPER_ADMIN; `GET /api/audit-logs` no longer requires a session `businessId` for SUPER_ADMIN; an optional `?businessId=` filter narrows the result set. See `docs/changes/2026-09-03-cross-business-audit-for-superadmin.md`.
 - [x] Add date, action, entity, user, pagination, and business filters from server context. (`buildAuditLogQuery` also supports `entityId`/`employeeId` filters for API consumers.)
 - [x] Create `/audit-logs` page.
 - [x] Show timestamp, user, action, entity, description, and expandable changes.

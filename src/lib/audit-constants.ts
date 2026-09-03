@@ -18,6 +18,7 @@ export const AuditAction = {
   LOGOUT: 'LOGOUT',
   FORGOT_PASSWORD_REQUESTED: 'FORGOT_PASSWORD_REQUESTED',
   PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+  ACCOUNT_UPDATED: 'ACCOUNT_UPDATED',
 
   USER_CREATED: 'USER_CREATED',
   USER_UPDATED: 'USER_UPDATED',
@@ -63,12 +64,15 @@ export const AUDIT_ENTITY_OPTIONS: readonly AuditEntity[] =
   Object.values(AuditEntity) as readonly AuditEntity[];
 
 /**
- * Read-side filters for the audit-log viewer. `businessId` is always taken
- * from the authenticated session — never from the request — so callers cannot
- * override tenant scope.
+ * Read-side filters for the audit-log viewer. `businessId` defaults to the
+ * authenticated session's business for tenant-scoped roles (ADMIN). For
+ * SUPER_ADMIN — who has no `businessId` — it is optional and, when omitted,
+ * yields a cross-business view; when supplied, it scopes results to that
+ * business. Callers cannot supply a business ID that overrides tenant scope
+ * unless they are SUPER_ADMIN.
  */
 export type AuditLogFilters = {
-  businessId: string;
+  businessId?: string | null;
   startDate?: Date | null;
   endDate?: Date | null;
   action?: string | null;
@@ -120,11 +124,14 @@ export type AuditLogDto = {
 /**
  * Build a Prisma `AuditLog` query from viewer filters.
  *
- * The `where` clause always pins `businessId = <session business>` and, when a
- * date range is supplied, a `timestamp` range — exactly what the composite
- * `(businessId, timestamp)` index on `AuditLog` is designed for. Sorting is
- * restricted to `timestamp` (the indexed column) so the planner can satisfy
- * both the filter and the ordering from a single index scan.
+ * For tenant-scoped roles (ADMIN), `businessId` is always pinned to the
+ * session's business — exactly what the composite `(businessId, timestamp)`
+ * index on `AuditLog` is designed for. For SUPER_ADMIN, `businessId` is
+ * optional: when supplied, it scopes results to one business; when omitted,
+ * the query spans all businesses. When a date range is supplied, a `timestamp`
+ * range narrows the scan. Sorting is restricted to `timestamp` (the indexed
+ * column) so the planner can satisfy both the filter and the ordering from a
+ * single index scan.
  *
  * This function is pure and is covered by unit tests (no database needed).
  */
@@ -135,9 +142,8 @@ export function buildAuditLogQuery(
 ): AuditLogQuery {
   const { businessId, startDate, endDate, action, entityType, entityId, userId, employeeId, query } = filters;
 
-  const where: Prisma.AuditLogWhereInput = {
-    businessId,
-  };
+  const where: Prisma.AuditLogWhereInput = {};
+  if (businessId) where.businessId = businessId;
 
   const dateRange: { gte?: Date; lte?: Date } = {};
   if (startDate) dateRange.gte = startDate;

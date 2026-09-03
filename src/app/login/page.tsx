@@ -8,7 +8,7 @@ import Link from 'next/link';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get('from') || '/dashboard';
+  const fromParam = searchParams.get('from');
   const resetSuccess = searchParams.get('reset') === '1';
 
   const [email, setEmail] = useState('');
@@ -62,7 +62,8 @@ function LoginForm() {
         return;
       }
 
-      router.push(from.startsWith('/') ? from : '/dashboard');
+       const role = json.data?.role;
+       router.push(role === 'SUPER_ADMIN' ? fromParam ?? '/home' : fromParam ?? '/dashboard');
       router.refresh();
     } catch {
       setError('A network error occurred. Please try again.');

@@ -17,7 +17,12 @@ export const Permission = {
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
 export const rolePermissions: Record<Role, readonly Permission[]> = {
-  SUPER_ADMIN: [Permission.MANAGE_BUSINESSES, Permission.READ_USERS, Permission.MANAGE_USERS],
+  SUPER_ADMIN: [
+    Permission.MANAGE_BUSINESSES,
+    Permission.READ_USERS,
+    Permission.MANAGE_USERS,
+    Permission.READ_AUDIT_LOGS,
+  ],
   ADMIN: [
     Permission.READ_PAYROLL, Permission.RUN_PAYROLL, Permission.READ_EMPLOYEES,
     Permission.MANAGE_EMPLOYEES, Permission.READ_SETTINGS, Permission.MANAGE_SETTINGS,

@@ -12,6 +12,7 @@ import {
 import { formatCurrency, previewPAYE } from '@/lib/payroll-engine';
 import { FbtRuleType, FbtClassification, FringeBenefitType } from '@/lib/fbt-engine';
 import { useToast } from '@/hooks/useToast';
+import { useCurrentUser } from '@/components/UserContext';
 
 interface Setting {
   id: string;
@@ -255,6 +256,173 @@ function bandsToMap(bands: BandRow[]): Record<string, string> {
 
 export default function SettingsPage() {
   const { showToast, Toast } = useToast();
+  const user = useCurrentUser();
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  const [accountForm, setAccountForm] = useState({
+    email: user?.email ?? '',
+    newPassword: '',
+    confirmPassword: '',
+    currentPassword: '',
+  });
+  const [accountErrors, setAccountErrors] = useState<Record<string, string>>({});
+  const [accountSaving, setAccountSaving] = useState(false);
+
+  if (isSuperAdmin) {
+    const validateAccountForm = (): Record<string, string> => {
+      const errors: Record<string, string> = {};
+      if (!accountForm.email.trim()) {
+        errors.email = 'Email is required';
+      } else if (!/^\S+@\S+\.\S+$/.test(accountForm.email)) {
+        errors.email = 'Enter a valid email address';
+      }
+      if (!accountForm.currentPassword) {
+        errors.currentPassword = 'Current password is required';
+      }
+      if (accountForm.newPassword) {
+        if (accountForm.newPassword.length < 8) errors.newPassword = 'Password must be at least 8 characters';
+        else if (!/[A-Z]/.test(accountForm.newPassword)) errors.newPassword = 'Password must contain at least one uppercase letter';
+        else if (!/[0-9]/.test(accountForm.newPassword)) errors.newPassword = 'Password must contain at least one number';
+        if (accountForm.newPassword !== accountForm.confirmPassword) {
+          errors.confirmPassword = 'Passwords do not match';
+        }
+      }
+      return errors;
+    };
+
+    const handleAccountSave = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setAccountErrors({});
+      const errors = validateAccountForm();
+      if (Object.keys(errors).length > 0) {
+        setAccountErrors(errors);
+        return;
+      }
+      setAccountSaving(true);
+      try {
+        const body: Record<string, string> = { currentPassword: accountForm.currentPassword };
+        if (accountForm.email !== user?.email) body.email = accountForm.email;
+        if (accountForm.newPassword) body.newPassword = accountForm.newPassword;
+        const res = await fetch('/api/auth/account', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(body),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          showToast(json.error ?? 'Failed to update account');
+          return;
+        }
+        if (accountForm.newPassword) {
+          window.location.href = '/login?reset=1';
+        } else {
+          showToast('Account updated');
+          setAccountForm({ email: json.data.email, newPassword: '', confirmPassword: '', currentPassword: '' });
+        }
+      } catch {
+        showToast('A network error occurred. Please try again.');
+      } finally {
+        setAccountSaving(false);
+      }
+    };
+
+    return (
+      <>
+        <div className="p-6 lg:p-8">
+          <h1 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <Settings className="h-6 w-6 text-primary" aria-hidden="true" />
+            Settings
+          </h1>
+          <div className="card max-w-2xl">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Account</h2>
+            <p className="text-sm text-gray-500 mb-4">Change your email address and password. You will be signed out of all sessions after a password change.</p>
+            <form onSubmit={handleAccountSave} className="space-y-4">
+              <div>
+                <label className="label" htmlFor="acct-email">Email address</label>
+                <input
+                  id="acct-email"
+                  type="email"
+                  className={`input ${accountErrors.email ? 'border-red-400' : ''}`}
+                  value={accountForm.email}
+                  onChange={(e) => setAccountForm({ ...accountForm, email: e.target.value })}
+                  aria-invalid={!!accountErrors.email}
+                  aria-describedby={accountErrors.email ? 'acct-email-error' : undefined}
+                />
+                {accountErrors.email && (
+                  <p id="acct-email-error" className="mt-1 text-xs text-red-600">{accountErrors.email}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="label" htmlFor="acct-current-password">Current password</label>
+                <input
+                  id="acct-current-password"
+                  type="password"
+                  className={`input ${accountErrors.currentPassword ? 'border-red-400' : ''}`}
+                  value={accountForm.currentPassword}
+                  onChange={(e) => setAccountForm({ ...accountForm, currentPassword: e.target.value })}
+                  autoComplete="current-password"
+                  aria-invalid={!!accountErrors.currentPassword}
+                  aria-describedby={accountErrors.currentPassword ? 'acct-current-error' : undefined}
+                />
+                {accountErrors.currentPassword && (
+                  <p id="acct-current-error" className="mt-1 text-xs text-red-600">{accountErrors.currentPassword}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="label" htmlFor="acct-new-password">New password (leave blank to keep current)</label>
+                <input
+                  id="acct-new-password"
+                  type="password"
+                  className={`input ${accountErrors.newPassword ? 'border-red-400' : ''}`}
+                  value={accountForm.newPassword}
+                  onChange={(e) => setAccountForm({ ...accountForm, newPassword: e.target.value })}
+                  autoComplete="new-password"
+                  aria-invalid={!!accountErrors.newPassword}
+                  aria-describedby={accountErrors.newPassword ? 'acct-new-error' : undefined}
+                />
+                {accountErrors.newPassword && (
+                  <p id="acct-new-error" className="mt-1 text-xs text-red-600">{accountErrors.newPassword}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="label" htmlFor="acct-confirm-password">Confirm new password</label>
+                <input
+                  id="acct-confirm-password"
+                  type="password"
+                  className={`input ${accountErrors.confirmPassword ? 'border-red-400' : ''}`}
+                  value={accountForm.confirmPassword}
+                  onChange={(e) => setAccountForm({ ...accountForm, confirmPassword: e.target.value })}
+                  autoComplete="new-password"
+                  aria-invalid={!!accountErrors.confirmPassword}
+                  aria-describedby={accountErrors.confirmPassword ? 'acct-confirm-error' : undefined}
+                />
+                {accountErrors.confirmPassword && (
+                  <p id="acct-confirm-error" className="mt-1 text-xs text-red-600">{accountErrors.confirmPassword}</p>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button type="submit" className="btn-primary" disabled={accountSaving}>
+                  {accountSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />
+                      Saving…
+                    </>
+                  ) : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <Toast />
+      </>
+    );
+  }
+
   const [settings, setSettings] = useState<Setting[]>([]);
   const [activeCategory, setActiveCategory] = useState<Category>('COMPANY');
   const [loading, setLoading] = useState(true);

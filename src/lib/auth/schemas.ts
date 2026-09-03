@@ -63,3 +63,28 @@ export const updateBusinessSchema = z.object({
   name: z.string().trim().min(1, 'Business name is required').max(200).optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
 });
+
+export const updateOwnAccountSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email()
+    .transform((value) => value.toLowerCase())
+    .optional(),
+  newPassword: passwordSchema.optional(),
+  currentPassword: z.string().min(1, 'Current password is required'),
+});
+
+// Role is hard-locked to ADMIN for business-admin creation. SUPER_ADMIN
+// manages businesses end-to-end; ADMIN is the only tenant-scoped role that
+// can sign in. Allowing any other role here would be a privilege-escalation
+// vector (a managed user could never escalate further than ADMIN).
+export const createBusinessAdminSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email()
+    .transform((value) => value.toLowerCase()),
+  password: passwordSchema,
+  role: z.enum(['ADMIN']).default('ADMIN'),
+});

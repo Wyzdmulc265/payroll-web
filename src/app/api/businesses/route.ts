@@ -34,9 +34,13 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
     const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '50')));
     const skip = (page - 1) * limit;
+    const statusParam = searchParams.get('status');
+    const statusFilter = statusParam === 'ACTIVE' || statusParam === 'INACTIVE' ? statusParam : undefined;
+    const where = statusFilter ? { status: statusFilter } : {};
 
     const [businesses, total] = await Promise.all([
       prisma.business.findMany({
+        where,
         select: {
           id: true,
           name: true,
@@ -49,7 +53,7 @@ export async function GET(request: NextRequest) {
         skip,
         take: limit,
       }),
-      prisma.business.count(),
+      prisma.business.count({ where }),
     ]);
 
     return NextResponse.json({

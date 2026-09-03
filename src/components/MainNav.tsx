@@ -25,7 +25,7 @@ const ALL_NAV: {
   permission: Permission;
   requiresBusiness?: boolean;
 }[] = [
-  { name: 'Dashboard', href: '/dashboard', icon: TrendingUp, permission: Permission.READ_PAYROLL }, // Or READ_EMPLOYEES, we'll check dynamically
+  { name: 'Dashboard', href: '/dashboard', icon: TrendingUp, permission: Permission.READ_PAYROLL },
   { name: 'Employees', href: '/employees', icon: Users, permission: Permission.READ_EMPLOYEES },
   { name: 'Payroll', href: '/payroll', icon: Calculator, permission: Permission.READ_PAYROLL },
   { name: 'Payslips', href: '/payslips', icon: FileText, permission: Permission.READ_PAYROLL },
@@ -34,6 +34,15 @@ const ALL_NAV: {
   { name: 'Businesses', href: '/businesses', icon: Building2, permission: Permission.MANAGE_BUSINESSES },
   { name: 'Users', href: '/users', icon: UserCog, permission: Permission.MANAGE_USERS, requiresBusiness: true },
   { name: 'Audit Logs', href: '/audit-logs', icon: ScrollText, permission: Permission.READ_AUDIT_LOGS, requiresBusiness: true },
+];
+
+// SUPER_ADMIN gets a focused 4-tab experience: Home, Business Management,
+// Settings, Audit Logs. No Employees / Payroll / Payslips / Reports / Users.
+const SUPER_ADMIN_NAV: { name: string; href: string; icon: typeof Users }[] = [
+  { name: 'Home', href: '/home', icon: TrendingUp },
+  { name: 'Business Management', href: '/businesses', icon: Building2 },
+  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Audit Logs', href: '/audit-logs', icon: ScrollText },
 ];
 
 /**
@@ -59,18 +68,19 @@ export default function MainNav({ children }: { children: ReactNode }) {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
-  // Filter NAV by user permissions
-  const visibleNav = ALL_NAV.filter((item) => {
-    if (!user) return false;
-    // User-management requires an assigned business tenant (SUPER_ADMIN has no
-    // implicit business and must select one first — Phase 9).
-    if (item.requiresBusiness && !user.businessId) return false;
-    // Special case for dashboard: can see if they can read payroll OR employees
-    if (item.name === 'Dashboard') {
-      return hasPermission(user.role, Permission.READ_PAYROLL) || hasPermission(user.role, Permission.READ_EMPLOYEES);
-    }
-    return hasPermission(user.role, item.permission);
-  });
+  // Role-aware nav: SUPER_ADMIN gets a focused 4-tab experience; all other
+  // roles use the permission-filtered nav (unchanged).
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const visibleNav = isSuperAdmin
+    ? SUPER_ADMIN_NAV
+    : ALL_NAV.filter((item) => {
+        if (!user) return false;
+        if (item.requiresBusiness && !user.businessId) return false;
+        if (item.name === 'Dashboard') {
+          return hasPermission(user.role, Permission.READ_PAYROLL) || hasPermission(user.role, Permission.READ_EMPLOYEES);
+        }
+        return hasPermission(user.role, item.permission);
+      });
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });

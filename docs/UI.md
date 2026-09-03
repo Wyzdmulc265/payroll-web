@@ -44,10 +44,17 @@ Single source of nav. Renders **two** presentations of the same links:
 `<>{children}</>` with no sidebar and no layout offset. Auth pages
 therefore do not need their own layout wrapper.
 
+**Role-aware variant for SUPER_ADMIN**: when `useCurrentUser().role === 'SUPER_ADMIN'`,
+the nav is replaced with a focused 4-tab experience: **Home · Business
+Management · Settings · Audit Logs**. The SUPER_ADMIN tab list does not
+pass through the `requiresBusiness` filter (SUPER_ADMIN has no
+`businessId` by design). All other roles see the same permission-filtered
+nav as before.
+
 **Active state** is derived from `usePathname()`:
 `pathname === href || pathname.startsWith(href + '/')`. Icons come
 from `lucide-react` (TrendingUp, Users, Calculator, FileText,
-BarChart3, Settings, Building2).
+BarChart3, Settings, Building2, UserCog, ScrollText).
 
 **Both variants are `print:hidden`.**
 
@@ -186,7 +193,9 @@ will execute when opened in Excel. See IMPROVEMENTS.
 
 ### 3.6 `/settings` — `src/app/settings/page.tsx`
 
-**The largest page (~976 lines).** A tabbed UI with five tabs:
+**Two role-branched layouts** sharing a single page file:
+
+**Tenant branch** (ADMIN / PAYROLL_OPERATOR / VIEWER) — a tabbed UI with five tabs:
 
 | Tab | What it edits |
 | --- | --- |
@@ -196,10 +205,15 @@ will execute when opened in Excel. See IMPROVEMENTS.
 | **SYSTEM** | Free-form app-level settings. |
 | **ADVANCED** | Raw `key`/`value` table, with sensitive-value masking (regex over key names). Add/edit/delete modals here. |
 
-**State:** per-tab `FieldDef[]` configuration + a per-tab local
+**SUPER_ADMIN branch** — a single **Account** card with email, new password,
+and current-password fields. Posts to `PATCH /api/auth/account`. A successful
+password change clears the cookie and forces a re-login redirect
+(`/login?reset=1`).
+
+**State (tenant):** per-tab `FieldDef[]` configuration + a per-tab local
 `formData` map. `effectiveFrom` defaults to today.
 
-**Save flow:** fires N parallel `POST /api/settings` requests — one
+**Save flow (tenant):** fires N parallel `POST /api/settings` requests — one
 per field. If the network blips mid-save, the settings end up
 half-updated. See IMPROVEMENTS for a batch endpoint.
 
@@ -207,13 +221,17 @@ half-updated. See IMPROVEMENTS for a batch endpoint.
 
 ### 3.7 `/audit-logs` — `src/app/audit-logs/page.tsx`
 
-**Who sees it:** ADMIN only (`Permission.READ_AUDIT_LOGS`) **and** only
-when the user has a business — same rules as the
-`GET /api/audit-logs` route, enforced both in `MainNav` (nav item hidden)
-and by the API (403 otherwise).
+**Who sees it:** ADMIN and SUPER_ADMIN (`Permission.READ_AUDIT_LOGS`).
+The route is business-scoped for ADMIN (session `businessId` only) and
+cross-business for SUPER_ADMIN (optional `?businessId=` filter
+narrows the result). Enforced in `MainNav` (the SUPER_ADMIN nav
+includes this entry; ADMIN/PAYROLL_OPERATOR/VIEWER do not), and by the
+API (`GET /api/audit-logs` returns 403 for any role that does not hold
+`READ_AUDIT_LOGS`).
 
 **What it shows:** A filter bar (date range defaulting to the last
-30 days, action select, entity-type select, free-text search) and a
+30 days, action select, entity-type select, free-text search,
+**and — for SUPER_ADMIN only — a business select**) and a
 paginated table (50 rows/page, newest first) of audit events with
 timestamp, action, entity type, actor email/employee ID, and description.
 
@@ -241,17 +259,48 @@ businesses with name, status badge, user and employee counts, and created
 date. Toolbar has a "New Business" button opening a create modal
 (business name + optional initial admin email/password).
 
+**Status filter chips** (`ACTIVE` / `INACTIVE` / `ALL`, default `ACTIVE`)
+above the table wire to `?status=` on `GET /api/businesses`.
+
 **Actions per row:**
-- **Rename** — inline modal, `PUT /api/businesses/[id]` with `name`.
-- **Deactivate / Activate** — `PUT` with `status`. Deactivating cuts
-  every active session of the business's users immediately (verified by
+- **Name click** — opens a side drawer for that business; the drawer
+  lists the business's admins (`GET /api/admin/businesses/[id]/admins`)
+  and offers Add / Edit / Deactivate admin actions.
+- **Rename / re-activate** — inline modal, `PUT /api/businesses/[id]`
+  with `name` and `status`. Deactivating cuts every active session of
+  the business's users immediately (verified by
   `business-management.test.ts`); users themselves stay `ACTIVE` so
   re-activating the business restores access without per-user churn.
+- **Deactivate** (row-level, ACTIVE only) — confirm dialog →
+  `PUT /api/businesses/[id]` with `status: INACTIVE`. Disabled for
+  already-INACTIVE businesses; reactivation happens through the rename
+  modal.
+
+**Auto-open drawer**: navigating to `/businesses?drawer=<id>` (e.g.
+from a recent-businesses link on `/home`) auto-opens the drawer for
+that business.
 
 **Backend:** `GET/POST /api/businesses` and `GET/PUT /api/businesses/[id]`
 (see API.md §8). These routes are metadata/lifecycle only — SUPER_ADMIN
 still cannot read any business's payroll data (no implicit cross-business
 access; asserted by test).
+
+### 3.9 `/home` — `src/app/home/page.tsx`
+
+**Who sees it:** SUPER_ADMIN only — the root `/` redirects SUPER_ADMIN
+here on login (server-side, see `src/app/page.tsx`).
+
+**What it shows:** A focused platform dashboard with three KPI cards
+(businesses, admins, payroll records) and a recent-businesses list.
+The KPI counts and the last-5 businesses come from
+`GET /api/admin/stats` (SUPER_ADMIN-only; uses the same `MANAGE_BUSINESSES`
+permission as `/api/businesses`).
+
+**Recent businesses** rows link to `/businesses?drawer=<id>`, which
+auto-opens the admin drawer on the businesses page.
+
+**Backend:** `GET /api/admin/stats` (new) — `MANAGE_BUSINESSES`-gated;
+ADMIN gets 403.
 
 ---
 

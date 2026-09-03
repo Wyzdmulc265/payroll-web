@@ -29,6 +29,7 @@ const querySchema = z.object({
   entityId: z.string().uuid().optional().nullable(),
   userId: z.string().uuid().optional().nullable(),
   employeeId: z.string().uuid().optional().nullable(),
+  businessId: z.string().optional().nullable(),
   query: z.string().trim().min(1).optional().nullable(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -41,13 +42,12 @@ export async function GET(request: NextRequest) {
     const session = await getCurrentUser(request);
     if (!session) return unauthorized();
 
-    // ADMIN-only and business-scoped. SUPER_ADMIN has neither the permission nor
-    // (typically) a business, so it gets 403 — cross-business audit access is
-    // intentionally not implemented (Phase 9).
+    // ADMIN is business-scoped: the tenant comes from the session only.
+    // SUPER_ADMIN has READ_AUDIT_LOGS (granted explicitly) and no session
+    // business, so it sees all rows; an optional `?businessId=` query filter
+    // lets it narrow to a single business.
     const denied = requirePermission(session.user, Permission.READ_AUDIT_LOGS);
     if (denied) return denied;
-    const businessId = session.user.businessId;
-    if (!businessId) return forbidden();
 
     const { searchParams } = new URL(request.url);
     const parseResult = querySchema.safeParse(Object.fromEntries(searchParams.entries()));
@@ -58,6 +58,10 @@ export async function GET(request: NextRequest) {
       );
     }
     const filters = parseResult.data;
+
+    const isSuperAdmin = session.user.role === 'SUPER_ADMIN';
+    const businessId = isSuperAdmin ? (filters.businessId ?? null) : session.user.businessId;
+    if (!businessId && !isSuperAdmin) return forbidden();
 
     // Default to the last 30 days; clamp the end to now and reject inverted ranges.
     const now = new Date();
