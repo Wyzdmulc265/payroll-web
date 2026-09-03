@@ -96,7 +96,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const updateData: { email?: string; passwordHash?: string; status?: string } = {};
+    const updateData: Record<string, unknown> = {};
     if (validated.email) updateData.email = validated.email;
     if (validated.password) updateData.passwordHash = await hashPassword(validated.password);
     if (validated.status) updateData.status = validated.status;

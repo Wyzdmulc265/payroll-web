@@ -138,7 +138,7 @@ describe('business admin management', () => {
       makeRequest(`http://localhost/api/admin/businesses/${bizA.id}/admins/${admin.id}`, sessionCookie(tokenSuper), 'PUT', {
         email: 'updated-admin@test.com',
       }),
-      await routeContext({ id: bizA.id, userId: admin.id })
+      await userContext({ id: bizA.id, userId: admin.id })
     );
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -149,7 +149,7 @@ describe('business admin management', () => {
     const admin = await prisma.user.findFirstOrThrow({ where: { businessId: bizA.id } });
     const res = await deleteAdmin(
       makeRequest(`http://localhost/api/admin/businesses/${bizA.id}/admins/${admin.id}`, sessionCookie(tokenSuper), 'DELETE'),
-      await routeContext({ id: bizA.id, userId: admin.id })
+      await userContext({ id: bizA.id, userId: admin.id })
     );
     expect(res.status).toBe(200);
     const refreshed = await prisma.user.findUnique({ where: { id: admin.id } });
@@ -168,7 +168,7 @@ describe('business admin management', () => {
 
     const res = await deleteAdmin(
       makeRequest(`http://localhost/api/admin/businesses/${bizA.id}/admins/${admin.id}`, sessionCookie(tokenSuper), 'DELETE'),
-      await routeContext({ id: bizA.id, userId: admin.id })
+      await userContext({ id: bizA.id, userId: admin.id })
     );
     expect(res.status).toBe(400);
   }, 30000);
@@ -189,7 +189,7 @@ describe('business admin management', () => {
       makeRequest(`http://localhost/api/admin/businesses/${bizB.id}/admins/${adminA.id}`, sessionCookie(tokenSuper), 'PUT', {
         email: 'wrong-biz@test.com',
       }),
-      await routeContext({ id: bizB.id, userId: adminA.id })
+      await userContext({ id: bizB.id, userId: adminA.id })
     );
     expect(res.status).toBe(404);
   }, 30000);

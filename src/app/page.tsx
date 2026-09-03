@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { SESSION_COOKIE, validateSessionToken } from '@/lib/auth';
 
 export default async function HomePage() {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const session = token ? await validateSessionToken(token) : null;
 
   if (!session) {

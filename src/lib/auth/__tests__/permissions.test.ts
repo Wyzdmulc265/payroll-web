@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Permission, rolePermissions, hasPermission } from '@/lib/auth/permissions';
-import type { Role } from '@/prisma/generated/client';
+import type { Role } from '../../../../prisma/generated/client';
 
 describe('permissions', () => {
   const roles: Role[] = ['SUPER_ADMIN', 'ADMIN', 'PAYROLL_OPERATOR', 'VIEWER'];
@@ -19,7 +19,7 @@ describe('permissions', () => {
   it('hasPermission resolves correctly for each role/permission pair', () => {
     for (const role of roles) {
       for (const perm of Object.values(Permission)) {
-        const expected = rolePermissions[role].includes(perm);
+        const expected = rolePermissions[role as Role].includes(perm);
         expect(hasPermission(role, perm)).toBe(expected);
       }
     }

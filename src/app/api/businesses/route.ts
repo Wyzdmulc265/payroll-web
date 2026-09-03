@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import prisma from '@/lib/prisma';
+import type { BusinessStatus } from '../../../../prisma/generated/client';
 import {
   getCurrentUser,
   unauthorized,
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
     const statusParam = searchParams.get('status');
     const statusFilter = statusParam === 'ACTIVE' || statusParam === 'INACTIVE' ? statusParam : undefined;
-    const where = statusFilter ? { status: statusFilter } : {};
+    const where = statusFilter ? { status: statusFilter as BusinessStatus } : undefined;
 
     const [businesses, total] = await Promise.all([
       prisma.business.findMany({
