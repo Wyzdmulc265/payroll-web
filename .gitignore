@@ -43,6 +43,11 @@ prisma/generated/
 .vscode/
 *.swp
 *.swo
+.kilo/
+.claude
+.agent/
+.devin/
+.cursor/
 
 # OS
 Thumbs.db
