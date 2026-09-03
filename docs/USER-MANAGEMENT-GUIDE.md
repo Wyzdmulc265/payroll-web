@@ -61,9 +61,9 @@ internals: [AUTH-IMPLEMENTATION.md](./AUTH-IMPLEMENTATION.md).
 - **Deactivate** (`DELETE`) instead of deleting: `isActive=false`
   preserves audit history and employee links; sessions are invalidated
   immediately.
-- Password rules (enforced server-side by Zod): minimum length with
-  upper, lower, and digit classes. Users reset their own password via
-  "Forgot password" on the login screen.
+- Password rules (enforced server-side by Zod): minimum 8 characters,
+  at least one uppercase letter, and at least one number. Users reset
+  their own password via "Forgot password" on the login screen.
 - ADMINs can manage only users **inside their own business**;
   cross-business user management is SUPER_ADMIN-only.
 

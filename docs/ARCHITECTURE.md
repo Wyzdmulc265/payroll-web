@@ -74,21 +74,34 @@ payroll-web/
 │   │   ├── layout.tsx             # Root layout (font, nav, globals)
 │   │   ├── page.tsx               # Redirect → /dashboard
 │   │   ├── globals.css            # Tailwind v4 + custom component classes
+│   │   ├── login/page.tsx         # Login form
 │   │   ├── dashboard/page.tsx     # KPIs + charts
 │   │   ├── employees/page.tsx     # CRUD
 │   │   ├── payroll/page.tsx       # Calculate → validate → save
 │   │   ├── payslips/page.tsx      # Per-employee payslip + print
 │   │   ├── reports/page.tsx       # CSV/Excel export
 │   │   ├── settings/page.tsx      # Tabbed settings UI
+│   │   ├── users/page.tsx         # User management (ADMIN+)
 │   │   └── api/
+│   │       ├── auth/login/route.ts
+│   │       ├── auth/logout/route.ts
+│   │       ├── auth/me/route.ts
+│   │       ├── auth/forgot-password/route.ts
+│   │       ├── auth/reset-password/route.ts
+│   │       ├── audit-logs/route.ts
+│   │       ├── businesses/route.ts
+│   │       ├── businesses/[id]/route.ts
 │   │       ├── dashboard/route.ts
 │   │       ├── employees/route.ts
 │   │       ├── employees/[id]/route.ts
+│   │       ├── fbt/route.ts
 │   │       ├── payroll/route.ts
 │   │       ├── payroll/calculate/route.ts
 │   │       ├── payslips/[id]/route.ts
 │   │       ├── reports/route.ts
-│   │       └── settings/route.ts
+│   │       ├── settings/route.ts
+│   │       ├── users/route.ts
+│   │       └── users/[id]/route.ts
 │   ├── components/
 │   │   └── MainNav.tsx            # Sidebar + mobile bottom nav
 │   └── lib/
@@ -222,9 +235,9 @@ User → /login (credentials form)
 - `src/proxy.ts` — Next.js 16 proxy; checks cookie presence only (no
   Prisma). Full session validation happens in route handlers.
 
-**Note:** `next-auth@5.0.0-beta.25` remains in `dependencies` but is
-intentionally unused. The custom system supersedes it. See `IMPROVEMENTS`
-for the rationale.
+**Note:** `next-auth` was pre-installed but intentionally unused. The custom
+session system supersedes it. The `next-auth` dependency has been removed
+from `package.json`.
 
 ---
 
@@ -250,8 +263,8 @@ Employees are never hard-deleted. `DELETE /api/employees/:id` flips
 
 Every mutation — `CREATE`, `UPDATE`, `DEACTIVATE`, `PAYROLL_RUN` — emits an
 `AuditLog` row. `oldValue` and `newValue` are JSON-stringified snapshots for
-diffability. `ipAddress` is declared on the schema but not yet populated
-(see [IMPROVEMENTS #1](#auth-and-audit) for the follow-up).
+diffability. `ipAddress` and `userAgent` are populated by the auth helpers
+(`src/lib/audit.ts`) on every audited request.
 
 ---
 

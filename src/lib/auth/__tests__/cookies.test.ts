@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { NextResponse } from 'next/server';
 import { setSessionCookie, clearSessionCookie } from '../cookies';
 
 interface MockCookieStore {
@@ -11,6 +12,7 @@ function createMockResponse(): { cookies: MockCookieStore } {
   const store = new Map<string, { value: string; options: Record<string, unknown> }>();
   return {
     cookies: {
+      _store: store,
       set(options: { name: string; value: string; [key: string]: unknown }) {
         const { name, value, ...rest } = options;
         store.set(name, { value, options: rest });
@@ -28,8 +30,7 @@ describe('session cookies', () => {
   it('sets HttpOnly, SameSite lax, and secure-in-production on setSessionCookie', () => {
     const response = createMockResponse();
     const expiresAt = new Date(Date.now() + 60_000);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setSessionCookie(response as any, 'test-token', expiresAt);
+    setSessionCookie(response as unknown as NextResponse, 'test-token', expiresAt);
 
     const cookie = response.cookies.get('payroll_session');
     expect(cookie).toBeDefined();
@@ -41,8 +42,7 @@ describe('session cookies', () => {
 
   it('clears the session cookie with maxAge 0 and empty value', () => {
     const response = createMockResponse();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    clearSessionCookie(response as any);
+    clearSessionCookie(response as unknown as NextResponse);
 
     const cookie = response.cookies.get('payroll_session');
     expect(cookie).toBeDefined();

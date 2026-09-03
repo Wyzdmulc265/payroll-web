@@ -75,11 +75,12 @@ export async function PUT(
     const denied = requirePermission(session.user, Permission.MANAGE_EMPLOYEES);
     if (denied) return denied;
     if (!session.user.businessId) return unauthorized();
+    const businessId = session.user.businessId;
     const { id } = await params;
     const body = await request.json();
     const validatedData = updateEmployeeSchema.parse(body);
 
-    const existing = await prisma.employee.findFirst({ where: { id, businessId: session.user.businessId } });
+    const existing = await prisma.employee.findFirst({ where: { id, businessId } });
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Employee not found' },
@@ -97,13 +98,13 @@ export async function PUT(
 
     const employee = await prisma.$transaction(async (tx) => {
       const updated = await tx.employee.update({
-        where: { id, businessId: session.user.businessId },
+        where: { id, businessId },
         data: updateData,
       });
 
       await logAuditEvent({
         action: 'EMPLOYEE_UPDATED', entityType: 'Employee', entityId: id,
-        userId: session.user.id, businessId: session.user.businessId,
+        userId: session.user.id, businessId,
         description: `Updated employee ${updated.employeeId}`,
         previousData: existing, newData: updated, ipAddress: getRequestIp(request),
       }, tx);
@@ -137,9 +138,10 @@ export async function DELETE(
     const denied = requirePermission(session.user, Permission.MANAGE_EMPLOYEES);
     if (denied) return denied;
     if (!session.user.businessId) return unauthorized();
+    const businessId = session.user.businessId;
     const { id } = await params;
     
-    const existing = await prisma.employee.findFirst({ where: { id, businessId: session.user.businessId } });
+    const existing = await prisma.employee.findFirst({ where: { id, businessId } });
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Employee not found' },
@@ -150,13 +152,13 @@ export async function DELETE(
     // Soft delete - mark as inactive
     const employee = await prisma.$transaction(async (tx) => {
       const updated = await tx.employee.update({
-        where: { id, businessId: session.user.businessId },
+        where: { id, businessId },
         data: { isActive: false, employmentStatus: 'Inactive' },
       });
 
       await logAuditEvent({
         action: 'EMPLOYEE_DEACTIVATED', entityType: 'Employee', entityId: id,
-        userId: session.user.id, businessId: session.user.businessId,
+        userId: session.user.id, businessId,
         description: `Deactivated employee ${updated.employeeId}`,
         previousData: existing, newData: updated, ipAddress: getRequestIp(request),
       }, tx);

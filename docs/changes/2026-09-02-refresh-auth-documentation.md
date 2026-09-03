@@ -57,4 +57,5 @@ were made in this commit.
 
 - Remove `next-auth` from `dependencies` once no references remain
   (tracked in `IMPROVEMENTS.md`).
+  <em>Update: `next-auth` has been removed in `2026-09-03-dependency-cleanup-and-fixes.md`.</em>
 - Update `README.md` auth section to match.

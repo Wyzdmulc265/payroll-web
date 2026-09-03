@@ -454,8 +454,7 @@ List all `Settings` rows, optionally filtered by `category`. Categories:
 
 > **Caveat** — this endpoint does not insert a *new row*; it **upserts**
 > by key. To preserve a historical value and add a new effective-from
-> date, the schema would need a composite unique key (`@@unique([key, effectiveFrom])`).
-> See [`IMPROVEMENTS.md`](./IMPROVEMENTS.md#24).
+> date, the schema uses a composite unique key on `(key, businessId)`.
 
 **Response `200`**: `{ success: true, data: <setting> }`.
 
@@ -465,8 +464,7 @@ Delete the row whose `key` matches.
 
 **Response `200`**: `{ success: true }`.
 
-> **Caveat** — this endpoint does **not** emit an `AuditLog` entry. See
-> [`IMPROVEMENTS.md`](./IMPROVEMENTS.md#4) for the follow-up.
+> **Audit** — this endpoint emits a `SETTINGS_DELETED` audit event.
 
 ---
 

@@ -35,13 +35,13 @@ SHA-256 hash is persisted in `PasswordReset` with a 1-hour expiry.
 
 1. `POST /api/auth/login` — Zod validation → rate-limit check
    (`MAX_LOGIN_ATTEMPTS` per `RATE_LIMIT_WINDOW_MS`, default 5 / 15 min,
-   keyed by IP + email) → user lookup by email (`isActive` only) →
-   bcrypt compare → create `Session` (TTL from `SESSION_DURATION_DAYS`,
-   default 1) → set cookie → **transactional** audit event
-   `LOGIN_SUCCEEDED` (or `LOGIN_FAILED` on bad credentials).
+  keyed by IP + User-Agent) → user lookup by email (`isActive` only) →
+  bcrypt compare → create `Session` (TTL from `SESSION_DURATION_DAYS`,
+  default 1) → set cookie → **transactional** audit event
+  `LOGIN_SUCCESS` (or `LOGIN_FAILED` on bad credentials).
 2. `POST /api/auth/logout` — invalidates the session row
    (`deleteMany` on the token hash) and clears the cookie; audit
-   `LOGOUT_SUCCEEDED`.
+   `LOGOUT`.
 3. 429 responses include a `Retry-After` header.
 
 ## 5. Authorization

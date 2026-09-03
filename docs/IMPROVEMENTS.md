@@ -14,7 +14,12 @@ fixes.
 
 ## 🔴 Critical
 
-### 1. No authentication or authorization
+### ~~1. No authentication or authorization~~ (resolved in Phase 7)
+
+> **Status:** Resolved. A custom session system is now in place (not
+> `next-auth`). All API routes require authentication and authorization;
+> `src/middleware.ts` (via `src/proxy.ts`) blocks unauthenticated requests.
+> The `next-auth` dependency has been removed entirely.
 
 **Files**: every `src/app/api/**/route.ts`.
 
@@ -44,10 +49,9 @@ high-severity incident waiting to happen.
 Compounds #1. Without an auth boundary, an attacker can host a page
 that drives the user's browser to make POST/PUT/DELETE calls.
 
-**Recommended fix**: `next-auth`'s built-in CSRF protection covers
-its own endpoints; for the rest, enforce a same-origin check in
-middleware (compare `Origin` / `Referer` to the app's host) or use
-a `next-safe-action` wrapper.
+**Recommended fix**: Since `next-auth` has been removed, enforce a
+same-origin check in middleware (compare `Origin` / `Referer` to the
+app's host) or use a `next-safe-action` wrapper.
 
 ### 3. `saveToApi` in `settings/page.tsx` fires N parallel POSTs
 
@@ -212,12 +216,13 @@ escaping correctly.
 
 ### 16. "Export PDF" misnomer on `/payslips`
 
-The "Export PDF" button calls `window.print()`. The declared
-`@react-pdf/renderer` dependency is unused.
+The "Export PDF" button calls `window.print()`. The `@react-pdf/renderer`
+dependency has been removed (it was unused).
 
 **Recommended fix**: either build a real PDF with
 `@react-pdf/renderer` (and email it / archive it from there) or
-rename the button to "Print / Save as PDF" and remove the dep.
+rename the button to "Print / Save as PDF". <em>(@react-pdf/renderer has
+been removed from deps; re-add if implementing.)</em>
 
 ### 17. Repeated `<EmployeeForm>` candidate
 
@@ -314,14 +319,20 @@ is wired.
 
 ## 🟢 Low / Polish
 
-### 31. `@react-pdf/renderer` is dead weight if "Export PDF" stays a print
+### 31. `@react-pdf/renderer` ~~is dead weight~~ (removed)
+
+`@react-pdf/renderer` has been removed from `dependencies` — it was
+unused. Re-add it only when the "Export PDF" button graduates from
+`window.print()` to real PDF generation.
 
 Either implement it (#16) or remove the dep (~MB of bundle).
 
-### 32. `next-auth` is dead weight until #1 is addressed
+### 32. `next-auth` ~~is dead weight~~ (removed)
 
-Pre-installing is fine (the upgrade becomes trivial); but if #1
-isn't planned, document the dep as "planned, not yet active."
+`next-auth@^5.0.0-beta.25` has been removed from `dependencies`. The
+custom session system is the active authentication mechanism; `next-auth`
+was never wired (no `[...nextauth]` route, no `auth()` calls). Removing
+it also closes the `@auth/core → nodemailer` transitive vulnerability.
 
 ### 33. No CI config
 

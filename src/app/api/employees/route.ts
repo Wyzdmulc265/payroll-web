@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
     const denied = requirePermission(session.user, Permission.MANAGE_EMPLOYEES);
     if (denied) return denied;
     if (!session.user.businessId) return unauthorized();
+    const businessId = session.user.businessId;
     const body = await request.json();
     const validatedData = employeeSchema.parse(body);
 
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
     const existing = await prisma.employee.findFirst({
       where: {
         employeeId: validatedData.employeeId,
-        businessId: session.user.businessId,
+        businessId,
       },
     });
 
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest) {
       const created = await tx.employee.create({
         data: {
           ...validatedData,
-          business: { connect: { id: session.user.businessId } },
+          business: { connect: { id: businessId } },
           fullName: `${validatedData.firstName} ${validatedData.lastName}`,
           employmentDate: new Date(validatedData.employmentDate),
         },
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
 
       await logAuditEvent({
         action: 'EMPLOYEE_CREATED', entityType: 'Employee', entityId: created.id,
-        userId: session.user.id, businessId: session.user.businessId,
+        userId: session.user.id, businessId,
         description: `Created employee ${created.employeeId}`, newData: created,
         ipAddress: getRequestIp(request),
       }, tx);

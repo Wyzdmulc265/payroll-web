@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import type { NextResponse } from 'next/server';
 import prisma from '../../prisma';
 import {
   createSession,
@@ -141,8 +142,7 @@ describe('Session Utilities', () => {
   it('sets HttpOnly, SameSite lax, and secure-in-production on session cookies', () => {
     const response = createMockResponse();
     const expiresAt = new Date(Date.now() + 60_000);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setSessionCookie(response as any, 'test-token', expiresAt);
+    setSessionCookie(response as unknown as NextResponse, 'test-token', expiresAt);
 
     const cookie = response.cookies.get('payroll_session') as Record<string, unknown> | undefined;
     expect(cookie).toBeDefined();
@@ -154,8 +154,7 @@ describe('Session Utilities', () => {
 
   it('clears the session cookie with maxAge 0 and empty value', () => {
     const response = createMockResponse();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    clearSessionCookie(response as any);
+    clearSessionCookie(response as unknown as NextResponse);
 
     const cookie = response.cookies.get('payroll_session') as Record<string, unknown> | undefined;
     expect(cookie).toBeDefined();

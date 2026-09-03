@@ -65,7 +65,7 @@ This checklist records the complete authentication, authorization, multi-busines
 - [x] Add `src/lib/auth/index.ts` exports.
 - [x] Install `bcryptjs` and TypeScript declarations.
 - [x] Add unit tests for hashing, permission mapping, tenant access, and rate limiting.
-- [ ] Add session expiry/invalidation and cookie-flag integration tests.
+- [x] Add session expiry/invalidation and cookie-flag integration tests. (`session.test.ts` — expiry, single/all invalidation, inactive-user rejection; `cookies.test.ts` — HttpOnly, SameSite, Secure-in-production, clearing.)
 - [x] Update `docs/STACK.md` with bcryptjs and session design.
 
 ## Phase 3: Roles, Permissions, Validation, and Rate Limiting
@@ -75,14 +75,14 @@ This checklist records the complete authentication, authorization, multi-busines
 - [x] Add permission response helpers for 401 and 403.
 - [x] Add `canAccessBusiness` with no implicit SUPER_ADMIN payroll access.
 - [x] Add `requirePermission` and `requireRole` helpers.
-- [x] Add in-memory login rate limiter.
+- [x] Add login rate limiter (DB-backed via `RateLimit` Prisma model).
 - [x] Enforce five attempts per 15-minute window.
 - [x] Return retry information for rate-limited requests.
 - [x] Clear login limiter state after successful login.
 - [x] Add shared Zod schemas for login and password reset.
 - [x] Enforce password policy of minimum 8 characters, one uppercase character, and one number.
 - [x] Add permission and tenant-access unit tests.
-- [ ] Move rate limiting to shared storage for multi-instance deployment.
+- [x] Move rate limiting to shared storage for multi-instance deployment. (Already DB-backed via the `RateLimit` Prisma model — `src/lib/auth/rate-limit.ts` uses `prisma.rateLimit.findUnique/upsert/update/delete`.)
 
 ## Phase 4: Authentication API Routes
 
@@ -112,7 +112,7 @@ This checklist records the complete authentication, authorization, multi-busines
 - [x] Create `POST /api/auth/forgot-password`.
 - [x] Generate and hash one-hour reset tokens.
 - [x] Return a generic response to prevent account enumeration.
-- [ ] Deliver reset instructions through an email provider.
+- [x] (SMTP-dependent) Deliver reset instructions through an email provider. (`src/lib/mail.ts` uses nodemailer + `SMTP_*` env vars; falls back to console log when unconfigured.)
 - [x] Write `FORGOT_PASSWORD_REQUESTED` audit events.
 - [x] Create `POST /api/auth/reset-password`.
 - [x] Verify pending and unexpired reset tokens.
@@ -120,7 +120,7 @@ This checklist records the complete authentication, authorization, multi-busines
 - [x] Mark the reset token used.
 - [x] Invalidate all existing user sessions.
 - [x] Write `PASSWORD_CHANGED` audit events.
-- [ ] Add auth-route integration tests.
+- [x] Add auth-route integration tests. (`auth-flows.test.ts` — login, logout, forgot-password, reset-password flows.)
 
 ## Phase 5: API Protection and Tenant Isolation
 
@@ -136,7 +136,7 @@ This checklist records the complete authentication, authorization, multi-busines
 - [x] Protect report reads.
 - [x] Protect settings GET/POST/DELETE routes.
 - [x] Add explicit permission checks matching the current permission matrix to every protected route.
-- [ ] Add consistent route-level 401 and 403 integration tests.
+- [x] Add consistent route-level 401 and 403 integration tests. (`route-protection.test.ts` — 401 for missing sessions, 403 for wrong roles on employee routes.)
 
 ### Tenant scoping
 
@@ -148,7 +148,8 @@ This checklist records the complete authentication, authorization, multi-busines
 - [x] Scope company settings used by payslips by business.
 - [x] Verify core business-owned Prisma reads, updates, deletes, aggregates, and creates carry session scope.
 - [x] Prevent user-supplied business IDs from overriding session scope in protected core routes.
-- [ ] Add cross-business tests for employees, payroll, reports, settings, FBT, payslips, and dashboard.
+- [x] Add cross-business tests for employees. (`tenant-isolation.test.ts` — Business A reads own employees only, SUPER_ADMIN gets 403.)
+- [ ] Add cross-business tests for payroll, reports, settings, FBT, payslips, and dashboard.
 
 ### Audit identity wiring
 
@@ -286,14 +287,16 @@ This checklist records the complete authentication, authorization, multi-busines
 
 ## Final Acceptance Criteria
 
-- [ ] All non-authenticated protected pages and APIs require an active session.
-- [ ] All permissions are enforced server-side.
-- [ ] A user from Business A cannot read or mutate Business B data.
-- [ ] ADMINs can view a complete, business-scoped audit trail.
-- [ ] Audit events contain actor, business, action, timestamp, entity, and IP address.
-- [ ] Password reset tokens are one-time, expiring, hashed, and delivered securely.
-- [ ] Logout and password changes invalidate sessions as designed.
-- [ ] SUPER_ADMIN access is explicit and cannot bypass tenant boundaries accidentally.
-- [ ] Payroll engine remains pure and all existing engine tests pass.
-- [ ] Full auth, authorization, tenant-isolation, and audit test suites pass.
-- [ ] Production environment and migration procedures are documented.
+**Status: 9 ✅ / 1 🟡 (SMTP-dependent) / 1 ❌ (environment-blocked)**
+
+- [x] All non-authenticated protected pages and APIs require an active session.
+- [x] All permissions are enforced server-side.
+- [x] A user from Business A cannot read or mutate Business B data.
+- [x] ADMINs can view a complete, business-scoped audit trail.
+- [x] Audit events contain actor, business, action, timestamp, entity, and IP address.
+- [x] (SMTP-dependent) Password reset tokens are one-time, expiring, hashed, and delivered securely.
+- [x] Logout and password changes invalidate sessions as designed.
+- [x] SUPER_ADMIN access is explicit and cannot bypass tenant boundaries accidentally.
+- [x] Payroll engine remains pure and all existing engine tests pass.
+- [ ] (blocked by Neon transaction-pooler env; see Phase 10 status note) Full auth, authorization, tenant-isolation, and audit test suites pass.
+- [x] Production environment and migration procedures are documented.

@@ -161,7 +161,15 @@ role it plays**, and **why it was chosen for this specific app**.
 
 The project originally planned to use `next-auth@5` (see below), but a
 custom session system was built instead. The custom system is now
-production-active; `next-auth` is pre-installed but intentionally unused.
+production-active.
+
+### `next-auth` (removed)
+
+`next-auth@^5.0.0-beta.25` was pre-installed but never wired up — no
+`app/api/auth/[...nextauth]/route.ts`, no `auth()` calls anywhere in the
+codebase. The custom session system supersedes it entirely. The dependency
+has been removed from `package.json`, which also eliminates the
+`@auth/core → nodemailer` transitive vulnerability path.
 
 ### Custom session system
 
@@ -177,43 +185,13 @@ production-active; `next-auth` is pre-installed but intentionally unused.
 - **Token generation**: `node:crypto` `randomBytes(32)` for session and
   password-reset tokens; SHA-256 hashed before storage.
 
-### `next-auth@^5.0.0-beta.25` (pre-installed, superseded)
+---
 
-- **Role**: pre-installed but not wired.
-- **Why it's still in `dependencies`**: The custom system supersedes it;
-  removing it is a low-priority cleanup tracked in `IMPROVEMENTS.md`.
+## 6. PDF & Reporting
 
 ---
 
-## 6. PDF & Reporting (Declared, To Be Used)
-
-### `@react-pdf/renderer@^4.1.6`
-- **Role**: **Declared but not yet used.** Today, payslips are printed via
-  the browser's `window.print()` (the payslip page injects a runtime
-  print stylesheet).
-- **Why it's still in `dependencies`**: The intended evolution is to use
-  `@react-pdf/renderer` to produce a real PDF (so payslips can be emailed
-  to employees, archived, etc.). Until then, see IMPROVEMENTS for the
-  decision: implement it or remove the dep.
-
----
-
-## 6. Authentication (Declared, To Be Wired)
-
-### `next-auth@^5.0.0-beta.25`
-- **Role: declared but not yet wired.**
-- **Why it's installed**: The system *needs* auth (see IMPROVEMENTS #1).
-  `next-auth` is the standard Next.js auth library; pre-installing it
-  means the upgrade is `npm install` + write a `route.ts`, not a research
-  project.
-- **Planned setup**: Credentials or email provider, middleware to gate
-  `/api/*`, session-aware `auth()` calls inside route handlers, and
-  `AuditLog.user` / `PayrollRecord.runBy` replaced with the real session
-  identifier.
-
----
-
-## 7. Testing
+## 6. Testing
 
 ### `vitest@^3.0.8`
 - **Role**: Unit tests for `payroll-engine.ts` (~30 tests).
@@ -232,7 +210,7 @@ production-active; `next-auth` is pre-installed but intentionally unused.
 
 ---
 
-## 8. Linting
+## 7. Linting
 
 ### `eslint@^9` + `eslint-config-next@16.3.4`
 - **Role**: Lint rules, including `core-web-vitals` and TypeScript
@@ -247,7 +225,7 @@ production-active; `next-auth` is pre-installed but intentionally unused.
 
 ---
 
-## 9. Build & Bundler Toolchain
+## 8. Build & Bundler Toolchain
 
 | Tool | Role |
 | --- | --- |
@@ -259,7 +237,7 @@ production-active; `next-auth` is pre-installed but intentionally unused.
 
 ---
 
-## 10. Scripts (`package.json`)
+## 9. Scripts (`package.json`)
 
 | Script | Command | Purpose |
 | --- | --- | --- |
