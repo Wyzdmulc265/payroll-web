@@ -44,11 +44,15 @@ describe('user management', () => {
   let adminToken: string;
 
   beforeEach(async () => {
-    await prisma.session.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.employee.deleteMany();
-    await prisma.business.deleteMany();
+    await prisma.fringeBenefit.deleteMany();
+    await prisma.payrollRecord.deleteMany();
     await prisma.auditLog.deleteMany();
+    await prisma.passwordReset.deleteMany();
+    await prisma.session.deleteMany();
+    await prisma.settings.deleteMany();
+    await prisma.employee.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.business.deleteMany();
 
     businessA = await prisma.business.create({ data: { name: 'Business A' } });
     businessB = await prisma.business.create({ data: { name: 'Business B' } });

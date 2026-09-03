@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Plus, Edit, Trash2, Building2, ShieldCheck, XCircle, ChevronLeft } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
@@ -46,7 +46,7 @@ const emptyAdminForm = {
   confirmPassword: '',
 };
 
-export default function BusinessesPage() {
+function BusinessesPageInner() {
   const { showToast, Toast } = useToast();
   const searchParams = useSearchParams();
 
@@ -690,5 +690,13 @@ export default function BusinessesPage() {
 
       <Toast />
     </div>
+  );
+}
+
+export default function BusinessesPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-500">Loading&hellip;</div>}>
+      <BusinessesPageInner />
+    </Suspense>
   );
 }
