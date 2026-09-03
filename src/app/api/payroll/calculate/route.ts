@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
+import { checkRateLimit } from '@/lib/auth/rate-limit';
 
 const payrollInputSchema = z.object({
    basicSalary: z.number().positive(),
@@ -44,6 +45,15 @@ export async function POST(request: NextRequest) {
   const denied = requirePermission(session.user, Permission.RUN_PAYROLL);
   if (denied) return denied;
   if (!session.user.businessId) return unauthorized();
+
+  const rateLimitKey = `payroll_calculate:${session.user.businessId}:${session.user.id}`;
+  const limit = await checkRateLimit(rateLimitKey, 10, 60 * 1000);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { success: false, error: `Rate limit exceeded. Try again in ${limit.retryAfterSeconds}s` },
+      { status: 429 }
+    );
+  }
      const body = await request.json();
      const validatedInput = payrollInputSchema.parse(body);
      const { payrollPeriod, fringeBenefits, ...input } = validatedInput;

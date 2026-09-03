@@ -8,6 +8,7 @@ import {
   ChevronLeft, ChevronRight, Table, Download as DownloadIcon
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/payroll-engine';
+import { escapeCsvCell, csvField } from '@/lib/csv';
 
 const REPORT_TYPES = [
   'Payroll Register',
@@ -119,8 +120,8 @@ export default function ReportsPage() {
     if (!reportData) return;
 
     const csvContent = [
-      reportData.headers.join(','),
-      ...reportData.rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','))
+      reportData.headers.map(csvField).join(','),
+      ...reportData.rows.map(row => row.map(cell => csvField(escapeCsvCell(cell))).join(','))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -134,7 +135,6 @@ export default function ReportsPage() {
   const exportToExcel = () => {
     if (!reportData) return;
 
-    // Simple HTML table to Excel
     const html = `
       <html>
         <head>
@@ -143,10 +143,10 @@ export default function ReportsPage() {
         <body>
           <table border="1">
             <thead>
-              <tr>${reportData.headers.map(h => `<th>${h}</th>`).join('')}</tr>
+              <tr>${reportData.headers.map(h => `<th>${escapeCsvCell(h)}</th>`).join('')}</tr>
             </thead>
             <tbody>
-              ${reportData.rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
+              ${reportData.rows.map(r => `<tr>${r.map(c => `<td>${escapeCsvCell(c)}</td>`).join('')}</tr>`).join('')}
             </tbody>
           </table>
         </body>

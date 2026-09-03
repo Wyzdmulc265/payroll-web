@@ -7,6 +7,7 @@ import {
   AUDIT_ENTITY_OPTIONS,
   type AuditLogDto,
 } from '@/lib/audit-constants';
+import { escapeCsvCell, csvField } from '@/lib/csv';
 
 interface AuditLogResponse {
   success: boolean;
@@ -18,17 +19,6 @@ interface AuditLogResponse {
 }
 
 const PAGE_SIZE = 50;
-
-function escapeCsvCell(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return '';
-  const s = String(value);
-  if (/^[=@+\-\t\r]/.test(s)) return `'${s.replace(/'/g, "''")}`;
-  return s;
-}
-
-function csvField(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
-}
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);

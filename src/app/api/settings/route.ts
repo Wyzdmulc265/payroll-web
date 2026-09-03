@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
+import { buildStatutoryConfigFromSettings, validateTaxBands } from '@/lib/payroll-engine';
 
 const settingSchema = z.object({
   key: z.string(),
@@ -88,6 +89,17 @@ export async function POST(request: NextRequest) {
     const businessId = session.user.businessId;
     const body = await request.json();
     const validatedData = settingSchema.parse(body);
+
+    if (validatedData.category === 'STATUTORY') {
+      const allSettings = await prisma.settings.findMany({ where: { businessId } });
+      const settingsMap = Object.fromEntries(allSettings.map((s) => [s.key, s.value]));
+      settingsMap[validatedData.key] = validatedData.value;
+      const config = buildStatutoryConfigFromSettings(settingsMap);
+      const bandError = validateTaxBands(config.taxBands);
+      if (bandError) {
+        return NextResponse.json({ success: false, error: bandError }, { status: 400 });
+      }
+    }
 
     const existing = await prisma.settings.findUnique({
       where: { key_businessId: { key: validatedData.key, businessId } },

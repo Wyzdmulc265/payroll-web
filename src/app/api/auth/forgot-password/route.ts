@@ -4,7 +4,7 @@ import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import { forgotPasswordSchema } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
-import { sendPasswordResetEmail } from '@/lib/mail';
+import { sendPasswordResetEmail, redactSmtpError } from '@/lib/mail';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,17 +22,22 @@ export async function POST(request: NextRequest) {
             expiresAt: new Date(Date.now() + 60 * 60 * 1000),
           },
         });
-      await sendPasswordResetEmail(user.email, token);
-      await logAuditEvent({
-        action: 'FORGOT_PASSWORD_REQUESTED',
-        entityType: 'Auth',
-        entityId: user.id,
-        userId: user.id,
-        businessId: user.businessId,
-        description: 'Password reset requested',
-        ipAddress: getRequestIp(request),
-      }, tx);
+        await logAuditEvent({
+          action: 'FORGOT_PASSWORD_REQUESTED',
+          entityType: 'Auth',
+          entityId: user.id,
+          userId: user.id,
+          businessId: user.businessId,
+          description: 'Password reset requested',
+          ipAddress: getRequestIp(request),
+        }, tx);
       });
+
+      try {
+        await sendPasswordResetEmail(user.email, token);
+      } catch (mailError) {
+        console.error('Failed to send password-reset email:', redactSmtpError(mailError));
+      }
     }
 
     return NextResponse.json({ success: true, data: { message: 'If the account exists, reset instructions have been sent.' } });

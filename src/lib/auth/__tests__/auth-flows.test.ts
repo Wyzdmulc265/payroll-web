@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST as postLogin } from '@/app/api/auth/login/route';
 import { POST as postLogout } from '@/app/api/auth/logout/route';
@@ -8,6 +8,26 @@ import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
 import { SESSION_COOKIE } from '@/lib/auth';
+import { __resetTransporterCache } from '@/lib/mail';
+
+const { sendMail } = vi.hoisted(() => ({ sendMail: vi.fn() }));
+vi.mock('nodemailer', () => ({
+  default: { createTransport: vi.fn(() => ({ sendMail })) },
+}));
+
+const SMTP_VARS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'] as const;
+function clearSmtpEnv(): void {
+  for (const v of SMTP_VARS) delete process.env[v];
+}
+function setBrevoEnv(): void {
+  clearSmtpEnv();
+  process.env.SMTP_HOST = 'smtp-relay.brevo.com';
+  process.env.SMTP_PORT = '587';
+  process.env.SMTP_USER = 'brevo-test-login';
+  process.env.SMTP_PASS = 'brevo-test-key';
+  process.env.SMTP_FROM = 'Payroll System <sender@brevo-test.com>';
+  process.env.NEXT_PUBLIC_APP_URL = 'https://payroll.example.com';
+}
 
 function makeRequest(url: string, init: { body?: unknown; cookie?: string; ua?: string } = {}): NextRequest {
   const headers = new Headers();
@@ -43,6 +63,11 @@ describe('auth route flows', () => {
       data: { email, passwordHash: hash, role: 'ADMIN', status: 'ACTIVE', businessId: biz.id },
     });
   }, 30000);
+
+  afterEach(() => {
+    clearSmtpEnv();
+    __resetTransporterCache();
+  });
 
   it('rejects a bad password with 401 and writes LOGIN_FAILED', async () => {
     const res = await postLogin(makeRequest('http://localhost/api/auth/login', { body: { email, password: 'WrongPass1' } }));
@@ -101,8 +126,19 @@ describe('auth route flows', () => {
   }, 30000);
 
   it('password reset: forgot issues a hashed one-time token, reset rotates the password, and reuse fails', async () => {
+    setBrevoEnv();
+    sendMail.mockReset();
+    sendMail.mockResolvedValue({ messageId: 'msg-123' });
+    __resetTransporterCache();
+
     const forgotRes = await postForgot(makeRequest('http://localhost/api/auth/forgot-password', { body: { email } }));
     expect(forgotRes.status).toBe(200);
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    const mailArgs = sendMail.mock.calls[0][0];
+    expect(mailArgs.from).toBe('Payroll System <sender@brevo-test.com>');
+    expect(mailArgs.to).toBe(email);
+    expect(mailArgs.subject).toBe('Reset your Payroll System password');
+    expect(mailArgs.html).toContain('https://payroll.example.com/reset-password/');
 
     const resetRecord = await prisma.passwordReset.findFirst({
       where: { user: { email } },
@@ -142,6 +178,34 @@ describe('auth route flows', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.data.message).toContain('If the account exists');
+  }, 30000);
+
+  it('rejects an expired password-reset token with 400', async () => {
+    const rawToken = `expired-${Date.now()}`;
+    await prisma.passwordReset.create({
+      data: {
+        userId: (await prisma.user.findUniqueOrThrow({ where: { email }})).id,
+        tokenHash: createHash('sha256').update(rawToken).digest('hex'),
+        expiresAt: new Date(Date.now() - 60_000),
+        status: 'PENDING',
+      },
+    });
+
+    const res = await postReset(
+      makeRequest('http://localhost/api/auth/reset-password', {
+        body: { token: rawToken, newPassword: 'NewFlow123' },
+      }),
+    );
+    expect(res.status).toBe(400);
+  }, 30000);
+
+  it('rejects an invalid (non-existent) password-reset token with 400', async () => {
+    const res = await postReset(
+      makeRequest('http://localhost/api/auth/reset-password', {
+        body: { token: 'does-not-exist', newPassword: 'NewFlow123' },
+      }),
+    );
+    expect(res.status).toBe(400);
   }, 30000);
 });
 

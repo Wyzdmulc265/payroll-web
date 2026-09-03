@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Building2, Eye, EyeOff, LogIn } from 'lucide-react';
 import Link from 'next/link';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const from = searchParams.get('from') || '/dashboard';
@@ -19,7 +19,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [retryAfter, setRetryAfter] = useState(0);
 
-  // Countdown timer for rate-limited logins
   useEffect(() => {
     if (retryAfter <= 0) return;
     const timer = setInterval(() => {
@@ -36,7 +35,6 @@ export default function LoginPage() {
     setError(null);
     setFieldErrors({});
 
-    // Basic client-side validation
     const errs: Record<string, string> = {};
     if (!email.trim()) errs.email = 'Email is required';
     else if (!/^\S+@\S+\.\S+$/.test(email)) errs.email = 'Enter a valid email address';
@@ -64,7 +62,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Success — hard navigate so the UserProvider re-fetches /api/auth/me
       router.push(from.startsWith('/') ? from : '/dashboard');
       router.refresh();
     } catch {
@@ -77,7 +74,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo / Brand */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary shadow-lg mb-4">
             <Building2 className="h-7 w-7 text-white" aria-hidden="true" />
@@ -86,12 +82,10 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 mt-1">Malawi Payroll Management</p>
         </div>
 
-        {/* Card */}
         <div className="card shadow-xl border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900 mb-1">Sign in to your account</h2>
           <p className="text-sm text-gray-500 mb-6">Enter your credentials to continue</p>
 
-          {/* Reset success banner */}
           {resetSuccess && (
             <div
               role="status"
@@ -101,7 +95,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Error banner */}
           {error && (
             <div
               role="alert"
@@ -116,7 +109,6 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} noValidate aria-describedby={error ? 'login-error' : undefined}>
-            {/* Email */}
             <div className="mb-4">
               <label htmlFor="login-email" className="label">
                 Email address
@@ -141,7 +133,6 @@ export default function LoginPage() {
               )}
             </div>
 
-            {/* Password */}
             <div className="mb-6">
               <label htmlFor="login-password" className="label">
                 Password
@@ -209,5 +200,27 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary shadow-lg mb-4">
+                <Building2 className="h-7 w-7 text-white" aria-hidden="true" />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900">WizTech Payroll</h1>
+              <p className="text-sm text-gray-500 mt-1">Malawi Payroll Management</p>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

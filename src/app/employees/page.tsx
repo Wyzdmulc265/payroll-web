@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/payroll-engine';
 import Link from 'next/link';
+import { useToast } from '@/hooks/useToast';
 
 interface Employee {
   id: string;
@@ -44,6 +45,7 @@ interface Pagination {
 }
 
 export default function EmployeesPage() {
+  const { showToast, Toast } = useToast();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
@@ -91,7 +93,6 @@ export default function EmployeesPage() {
       if (data.success) {
         setEmployees(data.data);
         setPagination(data.pagination);
-        // Extract unique departments
         const depts = [...new Set((data.data as Employee[]).map((e) => e.department))].sort();
         setDepartments(depts);
       }
@@ -102,24 +103,10 @@ export default function EmployeesPage() {
     }
   };
 
-  const fetchDepartments = async () => {
-    try {
-      const res = await fetch('/api/employees');
-      const data = await res.json();
-      if (data.success) {
-        const depts = [...new Set((data.data as Employee[]).map((e) => e.department))].sort();
-        setDepartments(depts);
-      }
-    } catch (error) {
-      console.error('Failed to fetch departments:', error);
-    }
-  };
-
   useEffect(() => {
     // Initial data load: setLoading fires synchronously inside the fetch helper by design.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEmployees();
-    fetchDepartments();
   }, [pagination.page, search, departmentFilter, statusFilter]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -205,12 +192,13 @@ export default function EmployeesPage() {
       const data = await res.json();
       if (data.success) {
         fetchEmployees();
+        showToast('Employee deactivated');
       } else {
-        alert(data.error || 'Failed to deactivate');
+        showToast(data.error || 'Failed to deactivate');
       }
     } catch (error) {
       console.error('Error deactivating employee:', error);
-      alert('Network error');
+      showToast('Network error');
     }
   };
 
@@ -513,11 +501,9 @@ export default function EmployeesPage() {
                     required
                   >
                     <option value="">Select Department</option>
-                    <option value="IT">IT</option>
-                    <option value="Finance">Finance</option>
-                    <option value="HR">HR</option>
-                    <option value="Sales">Sales</option>
-                    <option value="Admin">Admin</option>
+                    {departments.map((dept) => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
                   </select>
                   {formErrors.department && <p className="text-sm text-danger mt-1">{formErrors.department}</p>}
                 </div>
@@ -676,6 +662,7 @@ export default function EmployeesPage() {
           </div>
         </div>
       )}
+      <Toast />
     </div>
   );
 }

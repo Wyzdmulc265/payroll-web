@@ -5,12 +5,13 @@ import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import {
   Settings, Building2, DollarSign, CreditCard, Shield,
-  Loader2, Save, CheckCircle, AlertCircle, Plus, Edit, Trash2,
+  Loader2, Save, AlertCircle, Plus, Edit, Trash2,
   Eye, EyeOff, Key, Database, Cpu, Globe, Wrench, Table2,
   ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react';
-import { formatCurrency } from '@/lib/payroll-engine';
+import { formatCurrency, previewPAYE } from '@/lib/payroll-engine';
 import { FbtRuleType, FbtClassification, FringeBenefitType } from '@/lib/fbt-engine';
+import { useToast } from '@/hooks/useToast';
 
 interface Setting {
   id: string;
@@ -167,29 +168,6 @@ function getBandValue(settingsMap: Record<string, string>, band: number, suffix:
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function bandPreviewTax(income: number, bands: BandRow[]): number {
-  for (let i = 0; i < bands.length; i++) {
-    const band = bands[i];
-    if (income >= band.from && (i === bands.length - 1 || income <= band.to)) {
-      if (band.rate === 0) return 0;
-      const excess = income - band.from;
-      let cumulative = 0;
-      for (let j = 0; j < i; j++) {
-        const prev = bands[j];
-        cumulative += (prev.rate / 100) * (prev.to - prev.from + 1);
-      }
-      return Math.round(cumulative + (band.rate / 100) * excess);
-    }
-  }
-  const top = bands[bands.length - 1];
-  let cumulative = 0;
-  for (let i = 0; i < bands.length - 1; i++) {
-    const prev = bands[i];
-    cumulative += (prev.rate / 100) * (prev.to - prev.from + 1);
-  }
-  return Math.round(cumulative + (top.rate / 100) * (income - top.from));
-}
-
 function bandsFromMap(settingsMap: Record<string, string>): BandRow[] {
   const count = deriveBandCount(settingsMap);
   return Array.from({ length: count }, (_, i) => {
@@ -276,6 +254,7 @@ function bandsToMap(bands: BandRow[]): Record<string, string> {
 }
 
 export default function SettingsPage() {
+  const { showToast, Toast } = useToast();
   const [settings, setSettings] = useState<Setting[]>([]);
   const [activeCategory, setActiveCategory] = useState<Category>('COMPANY');
   const [loading, setLoading] = useState(true);
@@ -290,7 +269,6 @@ export default function SettingsPage() {
     effectiveFrom: new Date().toISOString().split('T')[0],
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     paye: true,
     pension: true,
@@ -378,22 +356,18 @@ export default function SettingsPage() {
     });
   }, [settings]);
 
-  const showToast = useCallback((message: string) => {
-    setSaveMessage(message);
-    setTimeout(() => setSaveMessage(null), 3000);
-  }, []);
-
   const saveToApi = useCallback(async (category: Category, updates: Record<string, string>) => {
     const entries = Object.entries(updates);
-    await Promise.all(
-      entries.map(([key, value]) =>
-        fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key, value, category }),
-        }).then(r => r.json())
-      )
-    );
+    const payload = entries.map(([key, value]) => ({ key, value, category }));
+    const res = await fetch('/api/settings/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Batch save failed');
+    }
     await fetchSettings();
   }, [fetchSettings]);
 
@@ -406,10 +380,10 @@ export default function SettingsPage() {
         setSettings(prev => prev.filter(s => s.key !== key));
         showToast(`Deleted "${key}"`);
       } else {
-        alert(data.error || 'Delete failed');
+        showToast(data.error || 'Delete failed');
       }
     } catch {
-      alert('Network error');
+      showToast('Network error');
     }
   }, [showToast]);
 
@@ -420,8 +394,9 @@ export default function SettingsPage() {
       setShowAdvancedModal(false);
       setEditingSetting(null);
       setFormData({ key: '', value: '', description: '', category: activeCategory, effectiveFrom: new Date().toISOString().split('T')[0] });
+      showToast('Setting saved');
     } catch {
-      alert('Save failed');
+      showToast('Save failed');
     }
   };
 
@@ -512,16 +487,21 @@ export default function SettingsPage() {
         </div>
       ))}
       <div className="pt-4 border-t border-gray-200">
-        <button
-          type="button"
-          onClick={() => {
-            const updates: Record<string, string> = {};
-            COMPANY_FIELDS.forEach(f => { if (companyForm[f.key] !== undefined) updates[f.key] = companyForm[f.key]; });
-            saveToApi('COMPANY', updates);
-          }}
-          disabled={saving === 'COMPANY'}
-          className="btn-primary"
-        >
+          <button
+            type="button"
+            onClick={async () => {
+              const updates: Record<string, string> = {};
+              COMPANY_FIELDS.forEach(f => { if (companyForm[f.key] !== undefined) updates[f.key] = companyForm[f.key]; });
+              try {
+                await saveToApi('COMPANY', updates);
+                showToast('Company settings saved');
+              } catch (e) {
+                showToast(e instanceof Error ? e.message : 'Save failed');
+              }
+            }}
+            disabled={saving === 'COMPANY'}
+            className="btn-primary"
+          >
           {saving === 'COMPANY' ? (
             <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...</>
           ) : (
@@ -542,16 +522,21 @@ export default function SettingsPage() {
         </div>
       ))}
       <div className="pt-4 border-t border-gray-200">
-        <button
-          type="button"
-          onClick={() => {
-            const updates: Record<string, string> = {};
-            PAYROLL_FIELDS.forEach(f => { if (payrollForm[f.key] !== undefined) updates[f.key] = payrollForm[f.key]; });
-            saveToApi('PAYROLL', updates);
-          }}
-          disabled={saving === 'PAYROLL'}
-          className="btn-primary"
-        >
+          <button
+            type="button"
+            onClick={async () => {
+              const updates: Record<string, string> = {};
+              PAYROLL_FIELDS.forEach(f => { if (payrollForm[f.key] !== undefined) updates[f.key] = payrollForm[f.key]; });
+              try {
+                await saveToApi('PAYROLL', updates);
+                showToast('Payroll settings saved');
+              } catch (e) {
+                showToast(e instanceof Error ? e.message : 'Save failed');
+              }
+            }}
+            disabled={saving === 'PAYROLL'}
+            className="btn-primary"
+          >
           {saving === 'PAYROLL' ? (
             <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...</>
           ) : (
@@ -565,7 +550,7 @@ export default function SettingsPage() {
   const renderStatutoryForm = () => {
     const previewBands = bands;
     const previewIncomes = [500000, 1000000, 2000000, 5000000, 10000000, 15000000];
-    const previewTaxes = previewIncomes.map(inc => bandPreviewTax(inc, previewBands));
+    const previewTaxes = previewIncomes.map(inc => previewPAYE(inc, previewBands));
 
     const updateBand = (index: number, field: keyof BandRow, value: number) => {
       setBands(prev => {
@@ -856,11 +841,16 @@ export default function SettingsPage() {
         <div className="pt-4 border-t border-gray-200">
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               const updates = { ...bandsToMap(bands) };
               PENSION_FIELDS.forEach(f => { if (pensionForm[f.key] !== undefined) updates[f.key] = pensionForm[f.key]; });
               OTHER_STATUTORY_FIELDS.forEach(f => { if (otherStatutoryForm[f.key] !== undefined) updates[f.key] = otherStatutoryForm[f.key]; });
-              saveToApi('STATUTORY', updates);
+              try {
+                await saveToApi('STATUTORY', updates);
+                showToast('Statutory settings saved');
+              } catch (e) {
+                showToast(e instanceof Error ? e.message : 'Save failed');
+              }
             }}
             disabled={saving === 'STATUTORY'}
             className="btn-primary"
@@ -886,16 +876,21 @@ export default function SettingsPage() {
         </div>
       ))}
       <div className="pt-4 border-t border-gray-200">
-        <button
-          type="button"
-          onClick={() => {
-            const updates: Record<string, string> = {};
-            SYSTEM_FIELDS.forEach(f => { if (systemForm[f.key] !== undefined) updates[f.key] = systemForm[f.key]; });
-            saveToApi('SYSTEM', updates);
-          }}
-          disabled={saving === 'SYSTEM'}
-          className="btn-primary"
-        >
+          <button
+            type="button"
+            onClick={async () => {
+              const updates: Record<string, string> = {};
+              SYSTEM_FIELDS.forEach(f => { if (systemForm[f.key] !== undefined) updates[f.key] = systemForm[f.key]; });
+              try {
+                await saveToApi('SYSTEM', updates);
+                showToast('System settings saved');
+              } catch (e) {
+                showToast(e instanceof Error ? e.message : 'Save failed');
+              }
+            }}
+            disabled={saving === 'SYSTEM'}
+            className="btn-primary"
+          >
           {saving === 'SYSTEM' ? (
             <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...</>
           ) : (
@@ -1053,14 +1048,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Toast */}
-        {saveMessage && (
-          <div className="fixed bottom-6 right-6 z-50">
-            <div className="bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
-              <CheckCircle className="h-5 w-5" />
-              {saveMessage}
-            </div>
-          </div>
-        )}
+        <Toast />
       </main>
 
       {/* Advanced Modal */}
@@ -1168,6 +1156,7 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+      <Toast />
     </div>
   );
 }

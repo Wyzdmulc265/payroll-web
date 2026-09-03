@@ -12,6 +12,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useCurrentUser } from '@/components/UserContext';
+import { useToast } from '@/hooks/useToast';
 
 type Role = 'ADMIN' | 'PAYROLL_OPERATOR' | 'VIEWER';
 type Status = 'ACTIVE' | 'INACTIVE';
@@ -45,6 +46,7 @@ const emptyForm = {
 
 export default function UsersPage() {
   const currentUser = useCurrentUser();
+  const { showToast, Toast } = useToast();
 
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,12 +193,12 @@ export default function UsersPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        window.alert(json.error ?? 'Failed to deactivate user');
+        showToast(json.error ?? 'Failed to deactivate user');
         return;
       }
       await fetchUsers();
     } catch {
-      window.alert('A network error occurred. Please try again.');
+      showToast('A network error occurred. Please try again.');
     }
   }
 
@@ -450,6 +452,7 @@ export default function UsersPage() {
           </div>
         </div>
       )}
+      <Toast />
     </div>
   );
 }

@@ -155,6 +155,8 @@ export async function POST(request: NextRequest) {
           otherEarnings: ot.otherEarnings || 0,
           otherDeductions: ot.otherDeductions || 0,
           fringeBenefits: benefits,
+          pensionApplicable: emp.pensionApplicable,
+          taxStatus: emp.taxStatus,
         };
 
 const result = calculatePayroll({
@@ -237,32 +239,43 @@ const result = calculatePayroll({
       }
 
       // Create payroll records + fringe benefits + audit log in a transaction.
-      const createdRecords = await prisma.$transaction(async (tx) => {
-        const records = await Promise.all(
-          payrollRecords.map(pr => tx.payrollRecord.create({
-            data: pr.record,
-            include: { employee: true },
-          }))
-        );
+      let createdRecords: { id: string }[];
+      try {
+        createdRecords = await prisma.$transaction(async (tx) => {
+          const records = await Promise.all(
+            payrollRecords.map(pr => tx.payrollRecord.create({
+              data: pr.record,
+              include: { employee: true },
+            }))
+          );
 
-        for (let i = 0; i < records.length; i++) {
-          const recordId = records[i].id;
-          const rows = payrollRecords[i].fbtRows.map(r => ({ ...r, payrollRecordId: recordId }));
-          if (rows.length > 0) {
-            await tx.fringeBenefit.createMany({ data: rows });
+          for (let i = 0; i < records.length; i++) {
+            const recordId = records[i].id;
+            const rows = payrollRecords[i].fbtRows.map(r => ({ ...r, payrollRecordId: recordId }));
+            if (rows.length > 0) {
+              await tx.fringeBenefit.createMany({ data: rows });
+            }
           }
+
+          await logAuditEvent({
+            action: 'PAYROLL_SAVED', entityType: 'Payroll', entityId: payrollPeriod,
+            userId: session.user.id, businessId: session.user.businessId,
+            description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
+            newData: { period: payrollPeriod, count: employees.length },
+            ipAddress: getRequestIp(request),
+          }, tx);
+
+          return records;
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          return NextResponse.json(
+            { success: false, error: `Payroll already exists for period ${payrollPeriod}` },
+            { status: 400 }
+          );
         }
-
-        await logAuditEvent({
-          action: 'PAYROLL_SAVED', entityType: 'Payroll', entityId: payrollPeriod,
-          userId: session.user.id, businessId: session.user.businessId,
-          description: `Processed payroll for ${employees.length} employees in period ${payrollPeriod}`,
-          newData: { period: payrollPeriod, count: employees.length },
-          ipAddress: getRequestIp(request),
-        }, tx);
-
-        return records;
-      });
+        throw error;
+      }
 
     return NextResponse.json({
       success: true,

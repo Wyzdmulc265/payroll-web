@@ -5,6 +5,7 @@
  */
 
 import { calculateEmployerFBT } from './fbt-engine';
+import { isMalawiPublicHoliday } from './malawi-holidays';
 
 export interface MalawiTaxBand {
   band: number;
@@ -126,14 +127,19 @@ export const DEFAULT_STATUTORY_CONFIG: StatutoryConfig = {
      });
    }
 
-   // Derive each band's cumulative tax — the tax owed on all income up to the
-   // band's start. cumTax(n) = cumTax(n-1) + rate(n-1) * (size of band n-1).
-   for (let i = 1; i < bands.length; i++) {
-     const prev = bands[i - 1];
-     bands[i].cumulativeTax = Math.round(
-       bands[i - 1].cumulativeTax + (prev.ratePercent / 100) * (prev.toAmount - prev.fromAmount + 1)
-     );
-   }
+    // Derive each band's cumulative tax — the tax owed on all income up to the
+    // band's start. cumTax(n) = cumTax(n-1) + rate(n-1) * (size of band n-1).
+    for (let i = 1; i < bands.length; i++) {
+      const prev = bands[i - 1];
+      bands[i].cumulativeTax = Math.round(
+        bands[i - 1].cumulativeTax + (prev.ratePercent / 100) * (prev.toAmount - prev.fromAmount + 1)
+      );
+    }
+
+    const bandError = validateTaxBands(bands);
+    if (bandError) {
+      throw new Error(bandError);
+    }
 
 return {
       taxBands: bands,
@@ -152,7 +158,27 @@ return {
       currency: settingsMap['currency'] || base.currency,
       decimalPlaces: num('decimal_places', base.decimalPlaces),
     };
- }
+  }
+
+export function validateTaxBands(bands: MalawiTaxBand[]): string | null {
+  if (bands.length === 0) return 'At least one tax band is required';
+  if (bands[0].fromAmount !== 0) return 'First tax band must start at 0';
+  for (let i = 0; i < bands.length; i++) {
+    const b = bands[i];
+    if (b.ratePercent < 0) return `Band ${i + 1} rate cannot be negative`;
+    if (b.toAmount < b.fromAmount) return `Band ${i + 1} toAmount cannot be less than fromAmount`;
+    if (i > 0) {
+      const prev = bands[i - 1];
+      if (b.fromAmount <= prev.toAmount) {
+        return `Band ${i + 1} overlaps with band ${i}`;
+      }
+      if (b.fromAmount > prev.toAmount + 1) {
+        return `Gap between band ${i} and band ${i + 1}`;
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Calculate PAYE (Pay As You Earn) tax for Malawi
@@ -211,23 +237,59 @@ export function calculateTEVETLevy(
   * Formula: (normalHours * normalRate + holidayHours * holidayRate + offDayHours * offDayRate) * 
   *          (basicSalary / workingDaysPerMonth / workingHoursPerDay)
   */
- export function calculateOvertimePay(
-    normalHours: number,
-    publicHolidayHours: number,
-    offDayHours: number,
-    basicSalary: number,
-    config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
- ): number {
-    if (normalHours <= 0 && publicHolidayHours <= 0 && offDayHours <= 0) return 0;
-    
-    const hourlyRate = basicSalary / config.workingDaysPerMonth / config.workingHoursPerDay;
-    
-    const normalPay = normalHours * config.overtimeNormalRateMultiplier * hourlyRate;
-    const holidayPay = publicHolidayHours * config.overtimePublicHolidayRateMultiplier * hourlyRate;
-    const offDayPay = offDayHours * config.overtimeOffDayRateMultiplier * hourlyRate;
-    
-    return Math.round(normalPay + holidayPay + offDayPay);
+  export function calculateOvertimePay(
+     normalHours: number,
+     publicHolidayHours: number,
+     offDayHours: number,
+     basicSalary: number,
+     config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
+   ): number {
+     if (normalHours <= 0 && publicHolidayHours <= 0 && offDayHours <= 0) return 0;
+     
+     const hourlyRate = basicSalary / config.workingDaysPerMonth / config.workingHoursPerDay;
+     
+     const normalPay = normalHours * config.overtimeNormalRateMultiplier * hourlyRate;
+     const holidayPay = publicHolidayHours * config.overtimePublicHolidayRateMultiplier * hourlyRate;
+     const offDayPay = offDayHours * config.overtimeOffDayRateMultiplier * hourlyRate;
+     
+     return Math.round(normalPay + holidayPay + offDayPay);
+   }
+
+export function previewOvertimePay(
+  normalHours: number,
+  holidayHours: number,
+  weekendHours: number,
+  basicSalary: number,
+  config: StatutoryConfig = DEFAULT_STATUTORY_CONFIG,
+): number {
+  return calculateOvertimePay(normalHours, holidayHours, weekendHours, basicSalary, config);
+}
+
+function computeBandCumulativeTax(bands: MalawiTaxBand[]): void {
+  for (let i = 1; i < bands.length; i++) {
+    const prev = bands[i - 1];
+    bands[i].cumulativeTax = Math.round(
+      bands[i - 1].cumulativeTax + (prev.ratePercent / 100) * (prev.toAmount - prev.fromAmount + 1)
+    );
   }
+}
+
+export function previewPAYE(
+  income: number,
+  bands: Array<{ from: number; to: number; rate: number }>,
+): number {
+  if (bands.length === 0) return 0;
+  const enriched: MalawiTaxBand[] = bands.map((b, i) => ({
+    band: i + 1,
+    fromAmount: b.from,
+    toAmount: b.to,
+    ratePercent: b.rate,
+    fixedAmount: 0,
+    cumulativeTax: 0,
+  }));
+  computeBandCumulativeTax(enriched);
+  return calculatePAYE(income, { ...DEFAULT_STATUTORY_CONFIG, taxBands: enriched });
+}
 
 /**
  * Calculate Gross Earnings
@@ -281,7 +343,7 @@ export function calculateEmployerCost(
 /**
   * Complete payroll calculation for a single employee
   */
- export interface PayrollInput {
+  export interface PayrollInput {
     basicSalary: number;
     allowances: number;
     normalOvertimeHours: number;        // Replaces overtimeHours
@@ -292,6 +354,8 @@ export function calculateEmployerCost(
     otherDeductions: number;
     fringeBenefits?: import('./fbt-engine').FringeBenefitInput[];
     workingDaysInPeriod?: number;
+    pensionApplicable?: boolean;
+    taxStatus?: string;
   
   }
 
@@ -350,9 +414,11 @@ export function calculateEmployerCost(
     );
     
     // Calculate statutory deductions
-    const paye = calculatePAYE(grossEarnings, config);
-    const pensionEE = calculatePensionEE(grossEarnings, config);
-    const pensionER = calculatePensionER(grossEarnings, config);
+    const isPensionApplicable = input.pensionApplicable ?? true;
+    const isTaxExempt = input.taxStatus === 'Exempt';
+    const paye = isTaxExempt ? 0 : calculatePAYE(grossEarnings, config);
+    const pensionEE = isPensionApplicable ? calculatePensionEE(grossEarnings, config) : 0;
+    const pensionER = isPensionApplicable ? calculatePensionER(grossEarnings, config) : 0;
     const tevetLevy = calculateTEVETLevy(grossEarnings, config);
     
     // Calculate totals
@@ -482,7 +548,7 @@ export function getWorkingDaysInMonth(year: number, month: number): number {
   for (let day = 1; day <= daysInMonth; day++) {
     date.setDate(day);
     const dayOfWeek = date.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+    if (dayOfWeek !== 0 && dayOfWeek !== 6 && !isMalawiPublicHoliday(year, month, day)) {
       workingDays++;
     }
   }

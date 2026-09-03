@@ -7,8 +7,9 @@ import {
   FileText, Download, Upload, RefreshCw, Save, Eye,
   ChevronLeft, ChevronRight, Plus, Minus, Search, Filter
 } from 'lucide-react';
-import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings } from '@/lib/payroll-engine';
+import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings, previewOvertimePay } from '@/lib/payroll-engine';
 import { FringeBenefitType, BenefitPaymentMethod, FringeBenefitInput, calculateBenefitValue } from '@/lib/fbt-engine';
+import { useToast } from '@/hooks/useToast';
 
 interface Employee {
   id: string;
@@ -58,6 +59,7 @@ interface PayrollPeriod {
 }
 
 export default function PayrollPage() {
+  const { showToast, Toast } = useToast();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrollRows, setPayrollRows] = useState<PayrollRow[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
@@ -282,24 +284,14 @@ export default function PayrollPage() {
     };
   }, []);
 
-  const calculateOvertimePay = (row: PayrollRow) => {
-    const cfg = config!;
-    if (row.normalOvertimeHours <= 0 && row.publicHolidayOvertimeHours <= 0 && row.offDayOvertimeHours <= 0) return 0;
-    const [py, pm] = selectedPeriod.split('-').map(Number);
-    const days = Number.isFinite(py) && Number.isFinite(pm)
-      ? getWorkingDaysInMonth(py, pm)
-      : cfg.workingDaysPerMonth;
-    const hourlyRate = row.basicSalary / days / cfg.workingHoursPerDay;
-
-    const normalPay = row.normalOvertimeHours * cfg.overtimeNormalRateMultiplier * hourlyRate;
-    const holidayPay = row.publicHolidayOvertimeHours * cfg.overtimePublicHolidayRateMultiplier * hourlyRate;
-    const offDayPay = row.offDayOvertimeHours * cfg.overtimeOffDayRateMultiplier * hourlyRate;
-
-    return Math.round(normalPay + holidayPay + offDayPay);
-  };
-
   const recalculateRowWithBenefits = (row: PayrollRow, benefits: FringeBenefitInput[]): PayrollRow => {
-    const overtimePay = calculateOvertimePay(row);
+    const overtimePay = previewOvertimePay(
+      row.normalOvertimeHours,
+      row.publicHolidayOvertimeHours,
+      row.offDayOvertimeHours,
+      row.basicSalary,
+      config!
+    );
     const [year, month] = selectedPeriod.split('-').map(Number);
     const input: PayrollInput = {
       basicSalary: row.basicSalary,
@@ -436,7 +428,7 @@ export default function PayrollPage() {
   };
 
   const handleGeneratePayslips = async () => {
-    alert('Payslip generation would redirect to Payslips page');
+    showToast('Payslip generation would redirect to Payslips page');
   };
 
   const totals = useMemo(() => payrollRows.reduce((acc, row) => {
@@ -1060,6 +1052,7 @@ export default function PayrollPage() {
           </div>
         )}
       </main>
+      <Toast />
     </div>
   );
 }

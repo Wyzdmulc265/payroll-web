@@ -66,10 +66,20 @@ explicit business selection (platform operations only).
 
 `POST /api/auth/forgot-password` always answers 200 (no user
 enumeration), creates a hashed one-time token, and emails the link via
-`src/lib/mail.ts` (SMTP env vars; falls back to server console logging —
-dev only). `POST /api/auth/reset-password` verifies the hash + expiry,
-rotates the password, **deletes the token** (single-use), and
-invalidates all of the user's sessions.
+`src/lib/mail.ts`. Delivery uses Brevo SMTP (`smtp-relay.brevo.com`,
+port 587, STARTTLS) when `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/
+`SMTP_FROM` are all set; the send runs **after** the `PasswordReset`
+row + `FORGOT_PASSWORD_REQUESTED` audit commit (not inside the DB
+transaction). If SMTP is not configured, reset links fall back to
+server-console logging in development only; in production the request
+is rejected loudly rather than silently claiming mail was sent. SMTP
+errors are logged server-side via `redactSmtpError` (never leaking the
+Brevo key, SMTP password, or reset token), and the client always
+receives the generic 200 message to prevent account enumeration.
+
+`POST /api/auth/reset-password` verifies the hash + expiry, rotates the
+password, marks the token `USED` (single-use), and invalidates all of
+the user's sessions.
 
 ## 8. Audit policy
 
@@ -94,7 +104,10 @@ immediately after first login, or leave the password blank to skip.
 See `.env.local.example` (dev) and `.env.production.example` (prod):
 `DATABASE_URL`, `BOOTSTRAP_SUPER_ADMIN_*`, `NEXT_PUBLIC_APP_URL`,
 `SESSION_DURATION_DAYS` (1), `MAX_LOGIN_ATTEMPTS` (5),
-`RATE_LIMIT_WINDOW_MS` (900000), `SMTP_*`, `NODE_ENV`.
+`RATE_LIMIT_WINDOW_MS` (900000), `SMTP_*` (Brevo: `smtp-relay.brevo.com`
+on port 587 with STARTTLS; `SMTP_USER` is the Brevo SMTP login,
+`SMTP_PASS` is the Brevo SMTP key, `SMTP_FROM` must be a verified
+sender), `NODE_ENV`.
 
 ## 11. Deployment notes
 

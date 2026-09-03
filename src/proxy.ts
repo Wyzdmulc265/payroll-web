@@ -36,12 +36,44 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
+function isSameOrigin(request: NextRequest): boolean {
+  const host = request.nextUrl.host;
+  const origin = request.headers.get('origin');
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      return originUrl.host === host;
+    } catch {
+      return false;
+    }
+  }
+  const referer = request.headers.get('referer');
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer);
+      return refererUrl.host === host;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Always allow public paths through.
   if (isPublicPath(pathname)) {
     return NextResponse.next();
+  }
+
+  // Block cross-origin mutating requests (CSRF guard).
+  const method = request.method;
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !isSameOrigin(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Origin not allowed' },
+      { status: 403 }
+    );
   }
 
   // Check for session cookie presence (value is opaque; DB validation is in route handlers).
