@@ -62,8 +62,16 @@ function LoginForm() {
         return;
       }
 
-       const role = json.data?.role;
-       router.push(role === 'SUPER_ADMIN' ? fromParam ?? '/home' : fromParam ?? '/dashboard');
+      const role = json.data?.role;
+      const businessName = json.data?.businessName;
+
+      if (role === 'SUPER_ADMIN') {
+        router.push(fromParam ?? '/home');
+      } else {
+        sessionStorage.setItem('selectedBusinessName', businessName ?? '');
+        router.push(fromParam ?? '/dashboard');
+      }
+
       router.refresh();
     } catch {
       setError('A network error occurred. Please try again.');

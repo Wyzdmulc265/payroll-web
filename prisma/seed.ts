@@ -22,13 +22,15 @@ async function main() {
   }
 
   // Clear existing data (in order due to foreign keys)
+  await prisma.fringeBenefit.deleteMany();
+  await prisma.payrollRecord.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.passwordReset.deleteMany();
   await prisma.session.deleteMany();
-  await prisma.payrollRecord.deleteMany();
-  await prisma.employee.deleteMany();
   await prisma.settings.deleteMany();
+  await prisma.employee.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.business.deleteMany();
 
   const business = await prisma.business.upsert({
     where: { id: 'test-biz-001' },
