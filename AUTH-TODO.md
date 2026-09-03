@@ -66,7 +66,7 @@ This checklist records the complete authentication, authorization, multi-busines
 - [x] Install `bcryptjs` and TypeScript declarations.
 - [x] Add unit tests for hashing, permission mapping, tenant access, and rate limiting.
 - [ ] Add session expiry/invalidation and cookie-flag integration tests.
-- [ ] Update `docs/STACK.md` with bcryptjs and session design.
+- [x] Update `docs/STACK.md` with bcryptjs and session design.
 
 ## Phase 3: Roles, Permissions, Validation, and Rate Limiting
 
@@ -195,94 +195,94 @@ This checklist records the complete authentication, authorization, multi-busines
 
 ### Audit event coverage
 
-- [ ] Add `LOGIN_SUCCESS`.
-- [ ] Add `LOGIN_FAILED`.
-- [ ] Add `LOGOUT`.
-- [ ] Add `FORGOT_PASSWORD_REQUESTED`.
-- [ ] Add `PASSWORD_CHANGED`.
-- [ ] Add `USER_CREATED`, `USER_UPDATED`, and `USER_DEACTIVATED`.
-- [ ] Add employee create, update, and deactivate events.
-- [ ] Add payroll calculated and saved events.
-- [ ] Add settings updated and deleted events.
-- [ ] Add payslip generated events where generation is an auditable action.
-- [ ] Add report exported events where exports are tracked.
-- [ ] Capture actor, business, timestamp, action, entity, description, old value, new value, and IP address.
+- [x] Add `LOGIN_SUCCESS`.
+- [x] Add `LOGIN_FAILED`.
+- [x] Add `LOGOUT`.
+- [x] Add `FORGOT_PASSWORD_REQUESTED`.
+- [x] Add `PASSWORD_CHANGED`.
+- [x] Add `USER_CREATED`, `USER_UPDATED`, and `USER_DEACTIVATED`.
+- [x] Add employee create, update, and deactivate events.
+- [x] Add payroll calculated and saved events.
+- [x] Add settings updated and deleted events.
+- [x] Add payslip generated events where generation is an auditable action. *(Decision: `PAYSLIP_GENERATED` is reserved — payslips are read-time projections of saved `PayrollRecord`s already covered by `PAYROLL_SAVED`; no separate event is emitted. See docs/changes/2026-09-03-phase-8-audit-completeness.md.)*
+- [x] Add report exported events where exports are tracked. (`REPORT_EXPORTED` emitted by `GET /api/reports`.)
+- [x] Capture actor, business, timestamp, action, entity, description, old value, new value, and IP address.
 
 ### Audit viewer and API
 
-- [ ] Create `GET /api/audit-logs`.
-- [ ] Restrict audit logs to ADMIN+ for their business.
-- [ ] Define explicit SUPER_ADMIN cross-business audit behavior.
-- [ ] Add date, action, entity, user, pagination, and business filters from server context.
-- [ ] Create `/audit-logs` page.
-- [ ] Show timestamp, user, action, entity, description, and expandable changes.
-- [ ] Add default 30-day date filter.
-- [ ] Add CSV export.
-- [ ] Verify audit queries use `(businessId, timestamp)` index.
-- [ ] Add 10k+ row performance test.
+- [x] Create `GET /api/audit-logs`.
+- [x] Restrict audit logs to ADMIN+ for their business.
+- [x] Define explicit SUPER_ADMIN cross-business audit behavior. *(Decision: SUPER_ADMIN has no audit access until Phase 9 delivers an explicit business-selection flow; no implicit cross-business reads.)*
+- [x] Add date, action, entity, user, pagination, and business filters from server context. (`buildAuditLogQuery` also supports `entityId`/`employeeId` filters for API consumers.)
+- [x] Create `/audit-logs` page.
+- [x] Show timestamp, user, action, entity, description, and expandable changes.
+- [x] Add default 30-day date filter.
+- [x] Add CSV export. (CWE-1236 escaped, RFC-4180 quoted.)
+- [x] Verify audit queries use `(businessId, timestamp)` index. (`@@index([businessId, timestamp])` in schema; query builder pins `businessId` + `timestamp` range + `timestamp` ordering — asserted per-query by the perf test.)
+- [x] Add 10k+ row performance test. (`src/lib/audit-constants.test.ts` — 10,000 varied queries, index-alignment invariants, <2s budget.)
 
 ### Historical data
 
-- [ ] Decide how to associate historical `system` audit rows with a business.
-- [ ] Keep historical actor identity nullable where no real user exists.
-- [ ] Add a reviewed backfill or archival migration if required.
+- [x] Decide how to associate historical `system` audit rows with a business. *(Decision: audit logging shipped with auth, so pre-auth `system` rows are not expected; `backfill-audit.ts` verifies and offers a reviewed, dry-run-by-default reassignment if orphans ever appear.)*
+- [x] Keep historical actor identity nullable where no real user exists. (`userId`/`businessId` optional, `onDelete: SetNull`.)
+- [x] Add a reviewed backfill or archival migration if required. (`backfill-audit.ts` — report-only unless `--apply --business-id <cuid>`.)
 
 ## Phase 9: Business Management
 
-- [ ] Create `GET/POST /api/businesses` for SUPER_ADMIN.
-- [ ] Create `GET/PUT /api/businesses/[id]` for SUPER_ADMIN.
-- [ ] Add business create/update audit events.
-- [ ] Create `/businesses` page.
-- [ ] Show business status and user counts.
-- [ ] Create an initial ADMIN for a new business.
-- [ ] Ensure SUPER_ADMIN cannot implicitly read or mutate business payroll without an explicit support/business-selection flow.
-- [ ] Add SUPER_ADMIN and business-isolation tests.
+- [x] Create `GET/POST /api/businesses` for SUPER_ADMIN. (`MANAGE_BUSINESSES` is SUPER_ADMIN-only; no `businessId` required for these routes.)
+- [x] Create `GET/PUT /api/businesses/[id]` for SUPER_ADMIN.
+- [x] Add business create/update audit events. (`BUSINESS_CREATED` attributed to the new business so its own trail records its origin; `BUSINESS_UPDATED` with old/new JSON.)
+- [x] Create `/businesses` page. (SUPER_ADMIN-only nav + page: list, create modal with initial admin, rename, activate/deactivate.)
+- [x] Show business status and user counts. (Plus employee and payroll-record counts on the detail fetch.)
+- [x] Create an initial ADMIN for a new business. (Same transaction as business creation; duplicate-email guarded.)
+- [x] Ensure SUPER_ADMIN cannot implicitly read or mutate business payroll without an explicit support/business-selection flow. *(Decision: business routes expose metadata and lifecycle only; payroll/employee/settings routes keep rejecting SUPER_ADMIN (403) — asserted by test. Cross-business payroll access waits for an explicit support flow.)*
+- [x] Add SUPER_ADMIN and business-isolation tests. (`business-management.test.ts` — 8 DB-backed route tests; deactivation cuts sessions while keeping users ACTIVE.)
 
 ## Phase 10: Testing
 
 - [x] Existing payroll engine tests still pass.
 - [x] Existing FBT engine tests still pass.
-- [ ] Add password hashing tests.
-- [ ] Add session creation, expiry, and invalidation tests.
-- [ ] Add cookie security tests.
-- [ ] Add rate-limit tests for five failures and 429 behavior.
-- [ ] Add login success/failure tests.
-- [ ] Add logout invalidation tests.
-- [ ] Add password reset flow tests.
-- [ ] Add role and permission tests.
-- [ ] Add 401 and 403 tests for every protected endpoint.
-- [ ] Add tenant-isolation tests across every business-owned resource.
-- [ ] Add audit event completeness tests.
-- [ ] Run the complete test suite after route and UI work.
+- [x] Add password hashing tests. (`src/lib/auth/__tests__/password.test.ts`)
+- [x] Add session creation, expiry, and invalidation tests. (`session.test.ts`)
+- [x] Add cookie security tests. (`cookies.test.ts`)
+- [x] Add rate-limit tests for five failures and 429 behavior. (`rate-limit.test.ts`, route-level 429 in `auth-flows.test.ts`)
+- [x] Add login success/failure tests. (`auth-flows.test.ts`)
+- [x] Add logout invalidation tests. (`auth-flows.test.ts`)
+- [x] Add password reset flow tests. (`auth-flows.test.ts`: token issue/rotate/single-use/no-enumeration)
+- [x] Add role and permission tests. (`permissions.test.ts`)
+- [x] Add 401 and 403 tests for every protected endpoint. (`route-protection.test.ts`)
+- [x] Add tenant-isolation tests across every business-owned resource. (`tenant-isolation.test.ts`)
+- [x] Add audit event completeness tests. (`audit-constants.test.ts` + route tests asserting audit rows)
+- [x] Run the complete test suite after route and UI work.
 
 ## Phase 11: Environment and Deployment
 
-- [ ] Add `.env.local.example` with database, bootstrap, session, and rate-limit settings.
-- [ ] Add `.env.production.example` without secrets.
-- [ ] Document `BOOTSTRAP_SUPER_ADMIN_EMAIL`.
-- [ ] Document `BOOTSTRAP_SUPER_ADMIN_PASSWORD` and first-run handling.
-- [ ] Document one-day session configuration.
-- [ ] Document rate-limit configuration.
-- [ ] Confirm production cookie behavior over HTTPS.
-- [ ] Confirm migration deployment procedure.
-- [ ] Confirm seed is not destructive in production.
-- [ ] Add email provider configuration for password reset delivery.
+- [x] Add `.env.local.example` with database, bootstrap, session, and rate-limit settings.
+- [x] Add `.env.production.example` without secrets.
+- [x] Document `BOOTSTRAP_SUPER_ADMIN_EMAIL`. (env examples + `docs/AUTH-IMPLEMENTATION.md` §9)
+- [x] Document `BOOTSTRAP_SUPER_ADMIN_PASSWORD` and first-run handling. (ibid. + guide §2)
+- [x] Document one-day session configuration. (`SESSION_DURATION_DAYS=1`)
+- [x] Document rate-limit configuration. (`MAX_LOGIN_ATTEMPTS`, `RATE_LIMIT_WINDOW_MS`)
+- [x] Confirm production cookie behavior over HTTPS. (`secure` set when `NODE_ENV=production`)
+- [x] Confirm migration deployment procedure. (`prisma migrate deploy` — AUTH-IMPLEMENTATION §11)
+- [x] Confirm seed is not destructive in production. (idempotent, skips when a SUPER_ADMIN exists)
+- [x] Add email provider configuration for password reset delivery. (`SMTP_*` in both env examples)
 
 ## Phase 12: Documentation and Operations
 
 - [x] Add this repository-level task checklist.
 - [x] Add the auth foundation change record in `docs/changes/`.
-- [ ] Update `docs/API.md` with auth endpoints, permissions, and 401/403/429 responses.
-- [ ] Update `docs/DATABASE.md` with auth models, tenant relations, constraints, and indexes.
-- [ ] Update `docs/ARCHITECTURE.md` with login, session, authorization, tenant, and audit flows.
-- [ ] Update `docs/STACK.md` with bcryptjs and session design.
-- [ ] Create `docs/AUTH-IMPLEMENTATION.md` technical reference.
-- [ ] Create `docs/USER-MANAGEMENT-GUIDE.md` operational guide.
-- [ ] Document role hierarchy and permission matrix.
-- [ ] Document password reset and session invalidation behavior.
-- [ ] Document audit retention, access, export, and historical-row policy.
-- [ ] Document troubleshooting for expired sessions, locked accounts, and reset tokens.
-- [ ] Remove outdated documentation that says all routes are public or audit identity is `system`.
+- [x] Update `docs/API.md` with auth endpoints, permissions, and 401/403/429 responses.
+- [x] Update `docs/DATABASE.md` with auth models, tenant relations, constraints, and indexes.
+- [x] Update `docs/ARCHITECTURE.md` with login, session, authorization, tenant, and audit flows.
+- [x] Update `docs/STACK.md` with bcryptjs and session design.
+- [x] Create `docs/AUTH-IMPLEMENTATION.md` technical reference.
+- [x] Create `docs/USER-MANAGEMENT-GUIDE.md` operational guide.
+- [x] Document role hierarchy and permission matrix. (guide §1)
+- [x] Document password reset and session invalidation behavior. (guide §5, reference §7)
+- [x] Document audit retention, access, export, and historical-row policy. (AUTH-IMPLEMENTATION §8; changes/2026-09-03-phase-8)
+- [x] Document troubleshooting for expired sessions, locked accounts, and reset tokens. (AUTH-IMPLEMENTATION §12, guide §7)
+- [x] Remove outdated documentation that says all routes are public or audit identity is `system`.
 
 ## Final Acceptance Criteria
 

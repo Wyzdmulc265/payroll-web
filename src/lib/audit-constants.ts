@@ -36,6 +36,9 @@ export const AuditAction = {
 
   PAYSLIP_GENERATED: 'PAYSLIP_GENERATED',
   REPORT_EXPORTED: 'REPORT_EXPORTED',
+
+  BUSINESS_CREATED: 'BUSINESS_CREATED',
+  BUSINESS_UPDATED: 'BUSINESS_UPDATED',
 } as const;
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];

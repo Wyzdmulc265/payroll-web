@@ -46,3 +46,20 @@ export const updateUserSchema = z.object({
   password: passwordSchema.optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
 });
+
+export const createBusinessSchema = z.object({
+  name: z.string().trim().min(1, 'Business name is required').max(200),
+  // Optional initial tenant administrator. The initial user is always role
+  // ADMIN — a new business must never start with a SUPER_ADMIN.
+  initialAdmin: z
+    .object({
+      email: z.string().trim().email().transform((value) => value.toLowerCase()),
+      password: passwordSchema,
+    })
+    .optional(),
+});
+
+export const updateBusinessSchema = z.object({
+  name: z.string().trim().min(1, 'Business name is required').max(200).optional(),
+  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+});

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma, { Prisma } from '@/lib/prisma';
 import { formatCurrency, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
+import { logAuditEvent, getRequestIp } from '@/lib/audit';
 
 export async function GET(request: NextRequest) {
   try {
@@ -265,6 +266,25 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
     }
+
+    // Audit the export (Phase 8): tracked for every report type, including
+    // the read-only data returned here — the browser's CSV/Excel buttons
+    // consume this same response, so this is the single choke point.
+    await logAuditEvent({
+      action: 'REPORT_EXPORTED',
+      entityType: 'Report',
+      entityId: period,
+      userId: session.user.id,
+      businessId: session.user.businessId,
+      description: `Report "${type}" exported for period ${period}`,
+      newData: {
+        type,
+        period,
+        department: department || 'All',
+        rowCount: reportData.length,
+      },
+      ipAddress: getRequestIp(request),
+    });
 
     return NextResponse.json({
       success: true,

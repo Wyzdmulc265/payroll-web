@@ -1,0 +1,147 @@
+import { describe, expect, it, beforeEach } from 'vitest';
+import { NextRequest } from 'next/server';
+import { POST as postLogin } from '@/app/api/auth/login/route';
+import { POST as postLogout } from '@/app/api/auth/logout/route';
+import { POST as postForgot } from '@/app/api/auth/forgot-password/route';
+import { POST as postReset } from '@/app/api/auth/reset-password/route';
+import prisma from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
+import { createHash } from 'node:crypto';
+import { SESSION_COOKIE } from '@/lib/auth';
+
+function makeRequest(url: string, init: { body?: unknown; cookie?: string; ua?: string } = {}): NextRequest {
+  const headers = new Headers();
+  headers.set('x-forwarded-for', '203.0.113.7');
+  headers.set('user-agent', init.ua ?? 'vitest-agent');
+  if (init.cookie) headers.set('cookie', init.cookie);
+  return new NextRequest(url, {
+    method: 'POST',
+    headers,
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+}
+
+function sessionCookie(token: string): string {
+  return `${SESSION_COOKIE}=${token}`;
+}
+
+async function latestAudit(action: string) {
+  return prisma.auditLog.findFirst({ where: { action }, orderBy: { timestamp: 'desc' } });
+}
+
+describe('auth route flows', () => {
+  let email: string;
+  let password: string;
+
+  beforeEach(async () => {
+    password = 'FlowTest123';
+    email = `flow-${Date.now()}@test.com`;
+    await prisma.auditLog.deleteMany({ where: { action: { in: ['LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGOUT', 'FORGOT_PASSWORD_REQUESTED', 'PASSWORD_CHANGED'] }, description: { contains: 'flow test marker' } } }).catch(() => {});
+    const hash = await bcrypt.hash(password, 10);
+    const biz = await prisma.business.create({ data: { name: `Flow Biz ${Date.now()}` } });
+    await prisma.user.create({
+      data: { email, passwordHash: hash, role: 'ADMIN', status: 'ACTIVE', businessId: biz.id },
+    });
+  }, 30000);
+
+  it('rejects a bad password with 401 and writes LOGIN_FAILED', async () => {
+    const res = await postLogin(makeRequest('http://localhost/api/auth/login', { body: { email, password: 'WrongPass1' } }));
+    expect(res.status).toBe(401);
+    const evt = await latestAudit('LOGIN_FAILED');
+    expect(evt).not.toBeNull();
+    expect(evt?.ipAddress).toBe('203.0.113.7');
+  }, 30000);
+
+  it('rejects a malformed payload with 400', async () => {
+    const res = await postLogin(makeRequest('http://localhost/api/auth/login', { body: { email: 'not-an-email', password: 'x' } }));
+    expect(res.status).toBe(400);
+  }, 30000);
+
+  it('logs in successfully, sets the cookie, writes LOGIN_SUCCESS, and the session validates', async () => {
+    const res = await postLogin(makeRequest('http://localhost/api/auth/login', { body: { email, password } }));
+    expect(res.status).toBe(200);
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('HttpOnly');
+    const token = setCookie.split(';')[0].split('=')[1];
+    const evt = await latestAudit('LOGIN_SUCCESS');
+    expect(evt?.userId).not.toBeNull();
+    const sessions = await prisma.session.findMany({ where: { tokenHash: createHash('sha256').update(token).digest('hex') } });
+    expect(sessions).toHaveLength(1);
+  }, 30000);
+
+  it('returns 429 after six attempts from the same key and includes Retry-After', async () => {
+    const ua = `rate-${Date.now()}`;
+    let last = 0;
+    for (let i = 0; i < 6; i += 1) {
+      const res = await postLogin(makeRequest('http://localhost/api/auth/login', { body: { email, password: 'WrongPass1' }, ua }));
+      last = res.status;
+    }
+    expect(last).toBe(429);
+    const blocked = await postLogin(makeRequest('http://localhost/api/auth/login', { body: { email, password: 'WrongPass1' }, ua }));
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('Retry-After')).not.toBeNull();
+    const json = await blocked.json();
+    expect(json.retryAfterSeconds).toBeGreaterThan(0);
+  }, 60000);
+
+  it('logout invalidates the session so it no longer validates', async () => {
+    const loginRes = await postLogin(makeRequest('http://localhost/api/auth/login', { body: { email, password } }));
+    const token = (loginRes.headers.get('set-cookie') ?? '').split(';')[0].split('=')[1];
+
+    const logoutRes = await postLogout(makeRequest('http://localhost/api/auth/logout', { cookie: sessionCookie(token) }));
+    expect(logoutRes.status).toBe(200);
+    expect(logoutRes.headers.get('set-cookie')).toContain('Max-Age=0');
+
+    const session = await prisma.session.findFirst({
+      where: { tokenHash: createHash('sha256').update(token).digest('hex') },
+    });
+    expect(session).toBeNull();
+    const evt = await latestAudit('LOGOUT');
+    expect(evt?.userId).not.toBeNull();
+  }, 30000);
+
+  it('password reset: forgot issues a hashed one-time token, reset rotates the password, and reuse fails', async () => {
+    const forgotRes = await postForgot(makeRequest('http://localhost/api/auth/forgot-password', { body: { email } }));
+    expect(forgotRes.status).toBe(200);
+
+    const resetRecord = await prisma.passwordReset.findFirst({
+      where: { user: { email } },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(resetRecord).not.toBeNull();
+    expect(resetRecord?.status).toBe('PENDING');
+    expect(resetRecord?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
+
+    // Recover the raw token by re-deriving: cannot — hashed at rest. Create one directly for the flow test.
+    const rawToken = `raw-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await prisma.passwordReset.update({ where: { id: resetRecord!.id }, data: { tokenHash: createHash('sha256').update(rawToken).digest('hex') } });
+
+    const resetRes = await postReset(makeRequest('http://localhost/api/auth/reset-password', { body: { token: rawToken, newPassword: 'NewFlow123' } }));
+    expect(resetRes.status).toBe(200);
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    expect(await bcrypt.compare('NewFlow123', user!.passwordHash)).toBe(true);
+
+    const used = await prisma.passwordReset.findUnique({ where: { id: resetRecord!.id } });
+    expect(used?.status).toBe('USED');
+
+    // All prior sessions for the user are invalidated.
+    const activeSessions = await prisma.session.count({ where: { userId: user!.id } });
+    expect(activeSessions).toBe(0);
+
+    // Token reuse is rejected.
+    const reuseRes = await postReset(makeRequest('http://localhost/api/auth/reset-password', { body: { token: rawToken, newPassword: 'Again1234' } }));
+    expect(reuseRes.status).toBe(400);
+
+    const evt = await latestAudit('PASSWORD_CHANGED');
+    expect(evt?.userId).toBe(user!.id);
+  }, 60000);
+
+  it('forgot-password always answers 200, even for unknown emails (no user enumeration)', async () => {
+    const res = await postForgot(makeRequest('http://localhost/api/auth/forgot-password', { body: { email: `ghost-${Date.now()}@test.com` } }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.data.message).toContain('If the account exists');
+  }, 30000);
+});
+

@@ -1,7 +1,9 @@
 import prisma from '../prisma';
 
-const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 15 * 60 * 1000;
+/** Failed-login attempts allowed per key before blocking. Configurable via MAX_LOGIN_ATTEMPTS (default: 5). */
+const MAX_ATTEMPTS = Number(process.env.MAX_LOGIN_ATTEMPTS ?? 5);
+/** Rate-limit window in milliseconds. Configurable via RATE_LIMIT_WINDOW_MS (default: 15 minutes). */
+const WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 15 * 60 * 1000);
 
 export async function checkLoginRateLimit(key: string): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
   const now = new Date();

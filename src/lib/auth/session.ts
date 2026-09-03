@@ -4,7 +4,9 @@ import prisma, { type Prisma } from '@/lib/prisma';
 import type { AuthUser, SessionContext } from './types';
 
 export const SESSION_COOKIE = 'payroll_session';
-export const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+/** Session lifetime in milliseconds. Configurable via SESSION_DURATION_DAYS (default: 1 day). */
+export const SESSION_TTL_MS =
+  Number(process.env.SESSION_DURATION_DAYS ?? 1) * 24 * 60 * 60 * 1000;
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');

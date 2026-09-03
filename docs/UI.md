@@ -231,6 +231,28 @@ and the `AuditLogDto` type from `@/lib/audit-constants` — the type-only
 Prisma module — never from `@/lib/audit`, which pulls the Prisma runtime
 and must stay server-side.
 
+### 3.8 `/businesses` — `src/app/businesses/page.tsx`
+
+**Who sees it:** SUPER_ADMIN only (`Permission.MANAGE_BUSINESSES`,
+which no other role holds). Nav entry appears only for SUPER_ADMIN.
+
+**What it shows:** A paginated table (50/page, newest first) of
+businesses with name, status badge, user and employee counts, and created
+date. Toolbar has a "New Business" button opening a create modal
+(business name + optional initial admin email/password).
+
+**Actions per row:**
+- **Rename** — inline modal, `PUT /api/businesses/[id]` with `name`.
+- **Deactivate / Activate** — `PUT` with `status`. Deactivating cuts
+  every active session of the business's users immediately (verified by
+  `business-management.test.ts`); users themselves stay `ACTIVE` so
+  re-activating the business restores access without per-user churn.
+
+**Backend:** `GET/POST /api/businesses` and `GET/PUT /api/businesses/[id]`
+(see API.md §8). These routes are metadata/lifecycle only — SUPER_ADMIN
+still cannot read any business's payroll data (no implicit cross-business
+access; asserted by test).
+
 ---
 
 ## 4. State Management Cheat-Sheet

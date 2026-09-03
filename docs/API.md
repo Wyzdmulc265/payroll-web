@@ -498,7 +498,66 @@ Returns the full dashboard payload:
 
 ---
 
-## 7. Common Error Responses
+## 7. Audit Logs
+
+### `GET /api/audit-logs`
+
+**Who:** ADMIN with `READ_AUDIT_LOGS`, business-pinned to the session.
+
+**Query params:** `startDate`/`endDate` (ISO, required), optional
+`action`, `entityType`, `entityId`, `employeeId`, `query` (case-insensitive
+substring over action/entity/description), `page` (default 1), `limit`
+(default 50, max 200). Sorted newest first; uses the
+`(businessId, timestamp)` index.
+
+**Response `200`**: `{ success: true, data: { auditLogs: [...], pagination } }`
+where each log includes `user { email, role }`, `employee { employeeId }`,
+`business { name }`, `oldValue`/`newValue` JSON strings, and `ipAddress`.
+
+---
+
+## 8. Businesses (Phase 9)
+
+**Who:** SUPER_ADMIN only (`MANAGE_BUSINESSES` is held by no other role).
+These routes manage business *metadata and lifecycle* only — they never
+expose a business's payroll, employee, or settings data. SUPER_ADMIN
+keeps receiving 403 from all business-scoped payroll routes; cross-business
+access requires a future explicit support/business-selection flow.
+
+### `GET /api/businesses?page=1&limit=50`
+
+Paginated list, newest first, with `_count: { users, employees }` per row.
+
+**Response `200`**: `{ success: true, data: [...], pagination }`.
+
+### `POST /api/businesses`
+
+Body: `{ "name": string, "initialAdmin"?: { "email": string, "password": string } }`.
+
+Creates the business, its `BUSINESS_CREATED` audit event (attributed to
+the new business so its own trail records its origin), and optionally an
+initial ADMIN user + `USER_CREATED` event — all in one transaction
+(15s timeout for Neon cold-starts). Duplicate admin email → `400`.
+
+**Response `201`**: `{ success: true, data: { business }, initialAdmin }`.
+
+### `GET /api/businesses/[id]`
+
+Single business with `_count: { users, employees, payrollRecords }`.
+`404` for unknown ids.
+
+### `PUT /api/businesses/[id]`
+
+Body: `{ "name"?: string, "status"?: "ACTIVE" | "INACTIVE" }`.
+
+Emits `BUSINESS_UPDATED` with old/new JSON. Setting `INACTIVE` from
+`ACTIVE` deletes every session of the business's users immediately
+(users themselves stay `ACTIVE`, so re-enabling restores access without
+per-user churn).
+
+---
+
+## 9. Common Error Responses
 
 | Status | When |
 | --- | --- |

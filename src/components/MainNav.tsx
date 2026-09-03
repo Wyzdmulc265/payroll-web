@@ -31,6 +31,7 @@ const ALL_NAV: {
   { name: 'Payslips', href: '/payslips', icon: FileText, permission: Permission.READ_PAYROLL },
   { name: 'Reports', href: '/reports', icon: BarChart3, permission: Permission.READ_REPORTS },
   { name: 'Settings', href: '/settings', icon: Settings, permission: Permission.READ_SETTINGS },
+  { name: 'Businesses', href: '/businesses', icon: Building2, permission: Permission.MANAGE_BUSINESSES },
   { name: 'Users', href: '/users', icon: UserCog, permission: Permission.MANAGE_USERS, requiresBusiness: true },
   { name: 'Audit Logs', href: '/audit-logs', icon: ScrollText, permission: Permission.READ_AUDIT_LOGS, requiresBusiness: true },
 ];
