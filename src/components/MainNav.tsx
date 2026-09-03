@@ -12,6 +12,7 @@ import {
   Building2,
   LogOut,
   UserCog,
+  ScrollText,
 } from 'lucide-react';
 import { useCurrentUser } from './UserContext';
 import { Permission, hasPermission } from '@/lib/auth/permissions';
@@ -31,6 +32,7 @@ const ALL_NAV: {
   { name: 'Reports', href: '/reports', icon: BarChart3, permission: Permission.READ_REPORTS },
   { name: 'Settings', href: '/settings', icon: Settings, permission: Permission.READ_SETTINGS },
   { name: 'Users', href: '/users', icon: UserCog, permission: Permission.MANAGE_USERS, requiresBusiness: true },
+  { name: 'Audit Logs', href: '/audit-logs', icon: ScrollText, permission: Permission.READ_AUDIT_LOGS, requiresBusiness: true },
 ];
 
 /**

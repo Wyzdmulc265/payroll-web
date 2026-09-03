@@ -205,6 +205,32 @@ half-updated. See IMPROVEMENTS for a batch endpoint.
 
 **Local icon:** `XCircle` SVG. Replace with `lucide-react`.
 
+### 3.7 `/audit-logs` — `src/app/audit-logs/page.tsx`
+
+**Who sees it:** ADMIN only (`Permission.READ_AUDIT_LOGS`) **and** only
+when the user has a business — same rules as the
+`GET /api/audit-logs` route, enforced both in `MainNav` (nav item hidden)
+and by the API (403 otherwise).
+
+**What it shows:** A filter bar (date range defaulting to the last
+30 days, action select, entity-type select, free-text search) and a
+paginated table (50 rows/page, newest first) of audit events with
+timestamp, action, entity type, actor email/employee ID, and description.
+
+**Row expansion:** rows with a stored `oldValue`/`newValue` get a chevron;
+expanding shows both JSON payloads pretty-printed plus entity ID, IP
+address, and business name.
+
+**Export CSV:** client-side export of the current page. Cells go through
+the shared CWE-1236 `escapeCsvCell` convention (single-quote prefix for
+`=`, `@`, `+`, `-`, tab, CR leads) and RFC-4180 quoting, matching the
+reports exporter. UTF-8 BOM prepended for Excel.
+
+**Implementation note:** the page imports its action/entity option lists
+and the `AuditLogDto` type from `@/lib/audit-constants` — the type-only
+Prisma module — never from `@/lib/audit`, which pulls the Prisma runtime
+and must stay server-side.
+
 ---
 
 ## 4. State Management Cheat-Sheet
