@@ -285,7 +285,25 @@ that business.
 still cannot read any business's payroll data (no implicit cross-business
 access; asserted by test).
 
-### 3.9 `/home` — `src/app/home/page.tsx`
+### 3.9 `/login` and `/forgot-password` — `src/app/login/page.tsx`, `src/app/forgot-password/page.tsx`
+
+**What they show:** the credential forms. `/login` has email, **business
+name**, and password fields; `/forgot-password` has email plus the same
+optional business name field. The business name disambiguates accounts when
+one email exists in several businesses (email is unique per business, not
+globally — see `DATABASE.md`). Hint text under the field reads
+*"Super admins leave this blank"*: `SUPER_ADMIN` (`businessId = null`)
+authenticates on email + password alone and any supplied business name is
+ignored server-side.
+
+**Behaviour:** `/login` POSTs `{ email, password, businessName? }` to
+`/api/auth/login`. A `400 { code: 'BUSINESS_REQUIRED' }` (email + password
+match several accounts) is rendered as a field error on the business-name
+input; all other failures use the generic banner (no enumeration). On
+success the page stores `selectedBusinessName` in `sessionStorage` and
+routes `SUPER_ADMIN → /home`, everyone else → `/dashboard`.
+
+### 3.10 `/home` — `src/app/home/page.tsx`
 
 **Who sees it:** SUPER_ADMIN only — the root `/` redirects SUPER_ADMIN
 here on login (server-side, see `src/app/page.tsx`).

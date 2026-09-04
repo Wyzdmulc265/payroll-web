@@ -6,6 +6,7 @@ import { Building2, ArrowLeft, Mail } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
+  const [businessField, setBusinessField] = useState('');
   const [emailError, setEmailError] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -25,7 +26,10 @@ export default function ForgotPasswordPage() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({
+          email: trimmed,
+          ...(businessField.trim() ? { businessName: businessField.trim() } : {}),
+        }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
@@ -102,6 +106,23 @@ export default function ForgotPasswordPage() {
                   {emailError && (
                     <p id="fp-email-error" className="mt-1 text-xs text-red-600">{emailError}</p>
                   )}
+                </div>
+
+                <div className="mb-6">
+                  <label htmlFor="fp-business-name" className="label">Business name</label>
+                  <input
+                    id="fp-business-name"
+                    type="text"
+                    autoComplete="organization"
+                    value={businessField}
+                    onChange={(e) => setBusinessField(e.target.value)}
+                    className="input"
+                    disabled={loading}
+                    placeholder="e.g. Acme Ltd"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    Only needed if your email is used in more than one business.
+                  </p>
                 </div>
 
                 <button

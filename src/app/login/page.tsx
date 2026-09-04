@@ -12,6 +12,7 @@ function LoginForm() {
   const resetSuccess = searchParams.get('reset') === '1';
 
   const [email, setEmail] = useState('');
+  const [businessField, setBusinessField] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +48,11 @@ function LoginForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+          ...(businessField.trim() ? { businessName: businessField.trim() } : {}),
+        }),
       });
       const json = await res.json();
 
@@ -58,6 +63,9 @@ function LoginForm() {
       }
 
       if (!res.ok || !json.success) {
+        if (json.code === 'BUSINESS_REQUIRED') {
+          setFieldErrors({ businessName: 'Your email has accounts in more than one business — enter your business name.' });
+        }
         setError(json.error ?? 'Login failed. Please check your credentials.');
         return;
       }
@@ -138,6 +146,29 @@ function LoginForm() {
               {fieldErrors.email && (
                 <p id="email-error" className="mt-1 text-xs text-red-600">
                   {fieldErrors.email}
+                </p>
+              )}
+            </div>
+
+            <div className="mb-4">
+              <label htmlFor="login-business-name" className="label">
+                Business name
+              </label>
+              <input
+                id="login-business-name"
+                type="text"
+                autoComplete="organization"
+                value={businessField}
+                onChange={(e) => setBusinessField(e.target.value)}
+                className={`input ${fieldErrors.businessName ? 'border-red-400 focus:ring-red-400' : ''}`}
+                aria-invalid={!!fieldErrors.businessName}
+                aria-describedby={fieldErrors.businessName ? 'business-name-error' : undefined}
+                disabled={loading}
+                placeholder="e.g. Acme Ltd"
+              />
+              {fieldErrors.businessName && (
+                <p id="business-name-error" className="mt-1 text-xs text-red-600">
+                  {fieldErrors.businessName}
                 </p>
               )}
             </div>

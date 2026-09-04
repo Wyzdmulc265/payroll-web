@@ -81,7 +81,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existing = await prisma.user.findFirst({ where: { email: validatedData.email } });
+    // Email is unique per business (User @@unique([email, businessId])), so
+    // the same address may legitimately exist in another business.
+    const existing = await prisma.user.findFirst({
+      where: { email: validatedData.email, businessId },
+    });
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'Email already in use' },

@@ -131,7 +131,7 @@ describe('user management', () => {
     expect(json.data.email).toBe('payroll@test.com');
     expect(json.data.businessId).toBe(businessA.id);
 
-    const stored = await prisma.user.findUnique({ where: { email: 'payroll@test.com' } });
+    const stored = await prisma.user.findFirst({ where: { email: 'payroll@test.com' } });
     expect(stored).not.toBeNull();
     expect(stored!.passwordHash).not.toBe('NewPass123');
     expect(await bcrypt.compare('NewPass123', stored!.passwordHash)).toBe(true);
@@ -154,7 +154,7 @@ describe('user management', () => {
     }));
     expect(res.status).toBe(400);
 
-    const stored = await prisma.user.findUnique({ where: { email: 'evil@test.com' } });
+    const stored = await prisma.user.findFirst({ where: { email: 'evil@test.com' } });
     expect(stored).toBeNull();
   });
 

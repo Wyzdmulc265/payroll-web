@@ -94,7 +94,7 @@ describe('business management (Phase 9)', () => {
     expect(res.status).toBe(201);
     expect(json.success).toBe(true);
 
-    const admin = await prisma.user.findUnique({ where: { email: 'founder@newbiz.com' } });
+    const admin = await prisma.user.findFirst({ where: { email: 'founder@newbiz.com' } });
     expect(admin).not.toBeNull();
     expect(admin!.role).toBe('ADMIN');
     expect(admin!.businessId).toBe(json.data.id);
@@ -106,13 +106,24 @@ describe('business management (Phase 9)', () => {
     expect(actions).toContain('USER_CREATED');
   }, 30000);
 
-  it('POST /api/businesses rejects a duplicate initial-admin email', async () => {
+  it('POST /api/businesses allows an initial-admin email that exists in another business', async () => {
+    // Email is unique per business (User @@unique([email, businessId])), so
+    // reusing admin-a@test.com for a new business is legitimate: both
+    // accounts coexist, each scoped to its own business.
     const req = makeRequest('http://localhost/api/businesses', sessionCookie(tokenSuper), 'POST', {
       name: 'Dup Biz',
       initialAdmin: { email: 'admin-a@test.com', password: 'Founder123' },
     });
     const res = await postBusinesses(req);
-    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(res.status).toBe(201);
+
+    const admins = await prisma.user.findMany({ where: { email: 'admin-a@test.com' } });
+    expect(admins).toHaveLength(2);
+    const businessIds = admins.map((a) => a.businessId);
+    expect(businessIds).toContain(json.data.id);
+    expect(new Set(businessIds).size).toBe(2);
+    expect(json.initialAdmin.email).toBe('admin-a@test.com');
   }, 30000);
 
   it('PUT /api/businesses/[id] updates name and writes a BUSINESS_UPDATED audit event', async () => {

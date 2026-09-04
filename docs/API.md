@@ -21,10 +21,22 @@ This document lists every HTTP route exposed by WizTech Payroll Web.
 
 ### `POST /api/auth/login`
 
-Accepts `{ "email": "user@example.com", "password": "StrongPass1" }`, creates
-a one-day HttpOnly session cookie, and returns safe user identity fields. Five
-attempts per 15-minute window are allowed per client key; further attempts return
-`429` with `Retry-After`.
+Accepts `{ "email": "user@example.com", "password": "StrongPass1", "businessName": "Acme Ltd" }`,
+creates a one-day HttpOnly session cookie, and returns safe user identity fields
+(`id`, `email`, `role`, `businessId`, `businessName`). Five attempts per
+15-minute window are allowed per client key; further attempts return `429`
+with `Retry-After`.
+
+Email is unique **per business**, so one address may map to several accounts.
+`businessName` (optional, trimmed, case-insensitive match on `Business.name`)
+selects which account to open. Resolution order: explicit business-name match
+first, then a password-verified `SUPER_ADMIN` match (**SUPER_ADMIN never needs
+a business name** — a supplied one is ignored), then a lone password-verified
+match. If email + password verify against several accounts and no usable
+`businessName` was given, the route returns `400 { code: "BUSINESS_REQUIRED" }`
+without naming any business. Unknown emails, wrong passwords, wrong business
+names, `INACTIVE` users, and users of `INACTIVE` businesses all return the
+generic `401 { error: "Invalid email or password" }` (no enumeration).
 
 ### `POST /api/auth/logout`
 
@@ -36,9 +48,14 @@ Returns the authenticated user's `id`, `email`, `role`, `status`, and `businessI
 
 ### `POST /api/auth/forgot-password`
 
-Accepts `{ "email": "user@example.com" }` and always returns a generic success
-message when the input is valid. Reset tokens expire after one hour and are stored
-hashed. Email delivery remains a deployment follow-up.
+Accepts `{ "email": "user@example.com", "businessName": "Acme Ltd" }` and always
+returns a generic success message when the input is valid. `businessName` is
+optional: when given it selects that business's account (falling back to a
+`SUPER_ADMIN` account when nothing else matches); when omitted and the address
+maps to several active accounts, each account gets its own one-time token and
+email (tokens are user-bound, so every link works for its own account).
+Reset tokens expire after one hour and are stored hashed. Email delivery remains
+a deployment follow-up.
 
 ### `POST /api/auth/reset-password`
 
@@ -85,7 +102,8 @@ Create a user in the actor's business.
 - Password follows the shared policy (min 8 chars, one uppercase, one number).
 - Password is hashed with bcryptjs (10 rounds); `businessId` is taken from the
   session, never the request body.
-- `400` on duplicate email or validation failure; requires `MANAGE_USERS`.
+- `400` on duplicate email **within the actor's business** (the same address
+  may exist in another business) or validation failure; requires `MANAGE_USERS`.
 - Emits `USER_CREATED` audit event with actor, business, and IP.
 
 **Response `201`**: `{ success: true, data: { <safe user fields> } }`.
@@ -108,7 +126,8 @@ Update a user in the actor's business.
 - Setting `role` to `SUPER_ADMIN` is rejected (`403`/`400`).
 - An actor cannot change their own role or deactivate themselves (`403`).
 - `password`, when provided, is re-hashed; otherwise the existing hash is kept.
-- `400` on empty body or duplicate email; requires `MANAGE_USERS`.
+- `400` on empty body or duplicate email **within the same business**;
+  requires `MANAGE_USERS`.
 - Emits `USER_UPDATED` audit event (sanitized old/new values, no hashes).
 
 ### `DELETE /api/users/[id]`
@@ -535,7 +554,9 @@ Body: `{ "name": string, "initialAdmin"?: { "email": string, "password": string 
 Creates the business, its `BUSINESS_CREATED` audit event (attributed to
 the new business so its own trail records its origin), and optionally an
 initial ADMIN user + `USER_CREATED` event — all in one transaction
-(15s timeout for Neon cold-starts). Duplicate admin email → `400`.
+(15s timeout for Neon cold-starts). The initial admin's email may already
+exist in another business (email is unique per business, not globally), so
+no duplicate-email guard applies here.
 
 **Response `201`**: `{ success: true, data: { business }, initialAdmin }`.
 

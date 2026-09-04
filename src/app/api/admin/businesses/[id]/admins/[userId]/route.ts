@@ -87,7 +87,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     if (validated.email && validated.email !== existing.email) {
-      const clash = await prisma.user.findFirst({ where: { email: validated.email } });
+      const clash = await prisma.user.findFirst({
+        where: { email: validated.email, businessId: id, id: { not: userId } },
+      });
       if (clash) {
         return NextResponse.json(
           { success: false, error: 'Email already in use' },

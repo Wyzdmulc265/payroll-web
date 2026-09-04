@@ -81,18 +81,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = createBusinessSchema.parse(body);
 
-    if (validated.initialAdmin) {
-      const existing = await prisma.user.findFirst({
-        where: { email: validated.initialAdmin.email },
-      });
-      if (existing) {
-        return NextResponse.json(
-          { success: false, error: 'Email already in use' },
-          { status: 400 }
-        );
-      }
-    }
-
+    // No duplicate-email guard here by design: email is unique per business
+    // (User @@unique([email, businessId])), so the initial admin's address
+    // may already exist in another business — or as a SUPER_ADMIN — and that
+    // is legitimate. The DB constraint still rejects a true duplicate within
+    // the new business (impossible at creation time: it has no users yet).
     const adminPasswordHash = validated.initialAdmin
       ? await hashPassword(validated.initialAdmin.password)
       : null;

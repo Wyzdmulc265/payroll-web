@@ -113,9 +113,12 @@ export async function PUT(
       );
     }
 
-    // Email uniqueness check.
+    // Email uniqueness check, scoped to this business (the same address
+    // may exist in another business) and excluding the user being updated.
     if (validatedData.email && validatedData.email !== existing.email) {
-      const clash = await prisma.user.findFirst({ where: { email: validatedData.email } });
+      const clash = await prisma.user.findFirst({
+        where: { email: validatedData.email, businessId: existing.businessId, id: { not: id } },
+      });
       if (clash) {
         return NextResponse.json(
           { success: false, error: 'Email already in use' },

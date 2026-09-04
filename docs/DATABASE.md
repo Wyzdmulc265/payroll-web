@@ -28,6 +28,17 @@ only a SHA-256 token hash and expires after one day. `PasswordReset` stores a
 one-time hashed token with an expiry. `RateLimit` tracks per-key login attempt
 counts for brute-force protection.
 
+### User email uniqueness
+
+`User.email` is unique **per business** (`@@unique([email, businessId])`), so
+one person can hold an account in several businesses under the same address;
+login disambiguates via the business name (see `API.md` —
+`POST /api/auth/login`). Postgres treats `NULL` as distinct in composite
+unique constraints, so a partial unique index
+(`users_email_no_business_key ON users(email) WHERE business_id IS NULL`,
+migration `20260903235900_scoped_user_email_per_business`) keeps
+business-less `SUPER_ADMIN` emails globally unique.
+
 ### Employee ID uniqueness
 
 Employee IDs are unique **per business**, enforced by the composite unique
@@ -293,6 +304,7 @@ Under `prisma/migrations/`:
 | `20260901202008_add_fringe_benefit_tax` | Adds `FringeBenefit` model, `fringeBenefitBase`, `fringeBenefitTax`, `fbtSnapshot` to `PayrollRecord`. |
 | `20260902144109_add_auth_and_business_models` | Adds `Business`, `User`, `Session`, `PasswordReset` models; drops legacy `audit_logs.user` and `payroll_records.run_by`; adds `business_id` to employees, payroll, settings. |
 | `20260902144200_add_rate_limit_table` | Adds `RateLimit` model for per-key login brute-force protection. |
+| `20260903235900_scoped_user_email_per_business` | Scopes `User` email uniqueness per business: drops `users_email_key`, adds `users_email_business_id_key (email, business_id)` plus partial `users_email_no_business_key (email) WHERE business_id IS NULL` for SUPER_ADMIN. |
 
 **Apply in prod**: `npm run prisma:deploy`.
 

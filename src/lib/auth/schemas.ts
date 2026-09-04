@@ -8,10 +8,15 @@ export const passwordSchema = z.string()
 export const loginSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
   password: z.string().min(1),
+  // Tenant disambiguator: one email may now exist in several businesses
+  // (see User @@unique([email, businessId])). Compared case-insensitively
+  // against Business.name. SUPER_ADMIN (businessId = null) never needs it.
+  businessName: z.string().trim().min(1).max(200).optional(),
 });
 
 export const forgotPasswordSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  businessName: z.string().trim().min(1).max(200).optional(),
 });
 
 export const resetPasswordSchema = z.object({

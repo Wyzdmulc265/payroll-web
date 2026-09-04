@@ -57,7 +57,7 @@ model Business {
 
 model User {
   id           String     @id @default(cuid())
-  email        String     @unique
+  email        String
   passwordHash String     @map("password_hash")
   role         Role
   status       UserStatus @default(ACTIVE)
@@ -71,6 +71,12 @@ model User {
   passwordResets PasswordReset[]
   payrollRecords PayrollRecord[] @relation("PayrollRunUser")
 
+  // Email is unique per business so one person can hold accounts in
+  // multiple businesses with the same email address. SUPER_ADMIN rows
+  // have businessId = NULL; Postgres treats NULLs as distinct in a
+  // composite unique constraint, so a partial unique index on email
+  // WHERE business_id IS NULL (see migration) keeps those globally unique.
+  @@unique([email, businessId])
   @@index([businessId])
   @@map("users")
 }

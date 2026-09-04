@@ -38,21 +38,35 @@ async function main() {
     create: { id: 'test-biz-001', name: 'Test Business', status: 'ACTIVE' },
   });
 
-  await prisma.user.upsert({
-    where: { email: bootstrapEmail.toLowerCase() },
-    update: { passwordHash: await bcrypt.hash(bootstrapPassword, 10), role: 'SUPER_ADMIN', status: 'ACTIVE', businessId: null },
-    create: { email: bootstrapEmail.toLowerCase(), passwordHash: await bcrypt.hash(bootstrapPassword, 10), role: 'SUPER_ADMIN', status: 'ACTIVE' },
-  });
+  // Email is unique per business (@@unique([email, businessId])), so seed
+  // users are matched on the (email, businessId) pair via findFirst rather
+  // than an email-keyed upsert.
+  async function seedUser(
+    email: string,
+    businessId: string | null,
+    password: string,
+    role: 'SUPER_ADMIN' | 'ADMIN' | 'PAYROLL_OPERATOR' | 'VIEWER',
+  ) {
+    const existing = await prisma.user.findFirst({ where: { email, businessId } });
+    const passwordHash = await bcrypt.hash(password, 10);
+    if (existing) {
+      return prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash, role, status: 'ACTIVE', businessId },
+      });
+    }
+    return prisma.user.create({
+      data: { email, passwordHash, role, status: 'ACTIVE', businessId },
+    });
+  }
+
+  await seedUser(bootstrapEmail.toLowerCase(), null, bootstrapPassword, 'SUPER_ADMIN');
   for (const account of [
     { email: 'admin@testbiz.local', password: 'AdminTest123', role: 'ADMIN' as const },
     { email: 'operator@testbiz.local', password: 'OperatorTest123', role: 'PAYROLL_OPERATOR' as const },
     { email: 'viewer@testbiz.local', password: 'ViewerTest123', role: 'VIEWER' as const },
   ]) {
-    await prisma.user.upsert({
-      where: { email: account.email },
-      update: { businessId: business.id, role: account.role, status: 'ACTIVE' },
-      create: { email: account.email, passwordHash: await bcrypt.hash(account.password, 10), role: account.role, status: 'ACTIVE', businessId: business.id },
-    });
+    await seedUser(account.email, business.id, account.password, account.role);
   }
   // Seed Settings
   console.log('📋 Seeding settings...');

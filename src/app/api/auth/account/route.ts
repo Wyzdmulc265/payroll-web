@@ -61,7 +61,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (validated.email && validated.email !== existing.email) {
-      const clash = await prisma.user.findFirst({ where: { email: validated.email } });
+      const clash = await prisma.user.findFirst({
+        where: { email: validated.email, businessId: existing.businessId, id: { not: existing.id } },
+      });
       if (clash) {
         return NextResponse.json(
           { success: false, error: 'Email already in use' },

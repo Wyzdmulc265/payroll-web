@@ -73,7 +73,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = await request.json();
     const validated = createBusinessAdminSchema.parse(body);
 
-    const existing = await prisma.user.findFirst({ where: { email: validated.email } });
+    const existing = await prisma.user.findFirst({ where: { email: validated.email, businessId: id } });
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'Email already in use' },

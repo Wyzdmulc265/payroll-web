@@ -155,7 +155,7 @@ describe('auth route flows', () => {
     const resetRes = await postReset(makeRequest('http://localhost/api/auth/reset-password', { body: { token: rawToken, newPassword: 'NewFlow123' } }));
     expect(resetRes.status).toBe(200);
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({ where: { email } });
     expect(await bcrypt.compare('NewFlow123', user!.passwordHash)).toBe(true);
 
     const used = await prisma.passwordReset.findUnique({ where: { id: resetRecord!.id } });
@@ -184,7 +184,7 @@ describe('auth route flows', () => {
     const rawToken = `expired-${Date.now()}`;
     await prisma.passwordReset.create({
       data: {
-        userId: (await prisma.user.findUniqueOrThrow({ where: { email }})).id,
+        userId: (await prisma.user.findFirstOrThrow({ where: { email }})).id,
         tokenHash: createHash('sha256').update(rawToken).digest('hex'),
         expiresAt: new Date(Date.now() - 60_000),
         status: 'PENDING',
@@ -207,5 +207,87 @@ describe('auth route flows', () => {
     );
     expect(res.status).toBe(400);
   }, 30000);
+
+  it('disambiguates one email shared by two businesses via businessName', async () => {
+    const ua = `dup-${Date.now()}`;
+    const dupEmail = `dup-${Date.now()}@test.com`;
+    const dupPassword = 'DupTest123';
+    const stamp = Date.now();
+    const bizA = await prisma.business.create({ data: { name: `Dup Biz A ${stamp}` } });
+    const bizB = await prisma.business.create({ data: { name: `Dup Biz B ${stamp}` } });
+    const hash = await bcrypt.hash(dupPassword, 10);
+    await prisma.user.create({
+      data: { email: dupEmail, passwordHash: hash, role: 'ADMIN', status: 'ACTIVE', businessId: bizA.id },
+    });
+    await prisma.user.create({
+      data: { email: dupEmail, passwordHash: hash, role: 'ADMIN', status: 'ACTIVE', businessId: bizB.id },
+    });
+
+    // Email + password alone is ambiguous: ask for the business name.
+    const ambiguous = await postLogin(
+      makeRequest('http://localhost/api/auth/login', { body: { email: dupEmail, password: dupPassword }, ua }),
+    );
+    expect(ambiguous.status).toBe(400);
+    expect((await ambiguous.json()).code).toBe('BUSINESS_REQUIRED');
+
+    // Correct business name selects the right account.
+    const loginA = await postLogin(
+      makeRequest(
+        'http://localhost/api/auth/login',
+        { body: { email: dupEmail, password: dupPassword, businessName: bizA.name }, ua },
+      ),
+    );
+    expect(loginA.status).toBe(200);
+    expect((await loginA.json()).data.businessId).toBe(bizA.id);
+
+    // Matching is case-insensitive.
+    const loginB = await postLogin(
+      makeRequest(
+        'http://localhost/api/auth/login',
+        { body: { email: dupEmail, password: dupPassword, businessName: bizB.name.toUpperCase() }, ua },
+      ),
+    );
+    expect(loginB.status).toBe(200);
+    expect((await loginB.json()).data.businessId).toBe(bizB.id);
+
+    // Unknown business name fails with the generic error (no enumeration).
+    const wrong = await postLogin(
+      makeRequest(
+        'http://localhost/api/auth/login',
+        { body: { email: dupEmail, password: dupPassword, businessName: 'No Such Business' }, ua },
+      ),
+    );
+    expect(wrong.status).toBe(401);
+  }, 60000);
+
+  it('lets SUPER_ADMIN log in without a business name', async () => {
+    const ua = `super-${Date.now()}`;
+    const superEmail = `super-${Date.now()}@test.com`;
+    const superPassword = 'SuperTest123';
+    await prisma.user.create({
+      data: {
+        email: superEmail,
+        passwordHash: await bcrypt.hash(superPassword, 10),
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+        businessId: null,
+      },
+    });
+
+    const withoutBusiness = await postLogin(
+      makeRequest('http://localhost/api/auth/login', { body: { email: superEmail, password: superPassword }, ua }),
+    );
+    expect(withoutBusiness.status).toBe(200);
+    expect((await withoutBusiness.json()).data.role).toBe('SUPER_ADMIN');
+
+    // A supplied business name is tolerated, not required.
+    const withBusiness = await postLogin(
+      makeRequest(
+        'http://localhost/api/auth/login',
+        { body: { email: superEmail, password: superPassword, businessName: 'Anything Ltd' }, ua },
+      ),
+    );
+    expect(withBusiness.status).toBe(200);
+  }, 60000);
 });
 

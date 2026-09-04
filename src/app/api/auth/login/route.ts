@@ -11,6 +11,8 @@ import {
 } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 
+const GENERIC_FAILURE = 'Invalid email or password';
+
 export async function POST(request: NextRequest) {
   const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const key = `${ipAddress}:${request.headers.get('user-agent') ?? 'unknown'}`;
@@ -25,12 +27,90 @@ export async function POST(request: NextRequest) {
 
    try {
       const body = await request.json();
-      const { email, password } = loginSchema.parse(body);
+      const { email, password, businessName } = loginSchema.parse(body);
+      const attemptedBusiness = businessName?.trim() || undefined;
 
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user || user.status !== 'ACTIVE' || !(await verifyPassword(password, user.passwordHash))) {
-        await logAuditEvent({ action: 'LOGIN_FAILED', entityType: 'Auth', description: 'Failed login attempt', ipAddress });
-        return NextResponse.json({ success: false, error: 'Invalid email or password' }, { status: 401 });
+      // Email is unique per business (User @@unique([email, businessId])), so
+      // one email may resolve to several accounts. Load all of them and
+      // verify the password against each candidate.
+      const candidates = await prisma.user.findMany({
+        where: { email },
+        include: { business: true },
+      });
+      if (candidates.length === 0) {
+        await logAuditEvent({
+          action: 'LOGIN_FAILED',
+          entityType: 'Auth',
+          description: attemptedBusiness
+            ? `Failed login attempt for unknown email (business "${attemptedBusiness}")`
+            : 'Failed login attempt for unknown email',
+          ipAddress,
+        });
+        return NextResponse.json({ success: false, error: GENERIC_FAILURE }, { status: 401 });
+      }
+
+      const matches: typeof candidates = [];
+      for (const candidate of candidates) {
+        if (
+          candidate.status === 'ACTIVE' &&
+          candidate.businessId !== null &&
+          candidate.business?.status === 'INACTIVE'
+        ) {
+          continue;
+        }
+        if (
+          candidate.status === 'ACTIVE' &&
+          (await verifyPassword(password, candidate.passwordHash))
+        ) {
+          matches.push(candidate);
+        }
+      }
+
+      if (matches.length === 0) {
+        await logAuditEvent({
+          action: 'LOGIN_FAILED',
+          entityType: 'Auth',
+          description: attemptedBusiness
+            ? `Failed login attempt (business "${attemptedBusiness}")`
+            : 'Failed login attempt',
+          ipAddress,
+        });
+        return NextResponse.json({ success: false, error: GENERIC_FAILURE }, { status: 401 });
+      }
+
+      let user = matches[0];
+      if (attemptedBusiness) {
+        // An explicit business name wins when it matches a password-verified
+        // tenant account. Otherwise a SUPER_ADMIN match still logs in — the
+        // superadmin exception: no business name is ever required of them.
+        const tenantMatch = matches.find(
+          (m) =>
+            m.businessId !== null &&
+            m.business?.name.trim().toLowerCase() === attemptedBusiness.toLowerCase(),
+        );
+        const superAdminMatch = matches.find((m) => m.role === 'SUPER_ADMIN');
+        const selected = tenantMatch ?? superAdminMatch;
+        if (!selected) {
+          await logAuditEvent({
+            action: 'LOGIN_FAILED',
+            entityType: 'Auth',
+            description: `Failed login attempt (business "${attemptedBusiness}")`,
+            ipAddress,
+          });
+          return NextResponse.json({ success: false, error: GENERIC_FAILURE }, { status: 401 });
+        }
+        user = selected;
+      } else if (matches.length > 1) {
+        // Email + password alone cannot pick an account. Ask for the business
+        // name without revealing which businesses hold the email.
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Multiple accounts share this email. Enter your business name to continue.',
+            code: 'BUSINESS_REQUIRED',
+          },
+          { status: 400 },
+        );
       }
 
       const business = user.businessId
