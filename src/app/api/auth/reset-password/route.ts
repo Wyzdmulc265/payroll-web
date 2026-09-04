@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
         description: 'Password changed through reset flow',
         ipAddress: getRequestIp(request),
       }, transaction);
-    });
+    }, { timeout: 15000, maxWait: 10000 });
     await invalidateAllSessionsForUser(reset.userId);
     return NextResponse.json({ success: true });
   } catch (error) {

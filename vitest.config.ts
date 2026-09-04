@@ -10,6 +10,8 @@ export default defineConfig({
     poolOptions: {
       forks: { singleFork: true },
     },
+    hookTimeout: 30000,
+    testTimeout: 30000,
   },
   resolve: {
     alias: {

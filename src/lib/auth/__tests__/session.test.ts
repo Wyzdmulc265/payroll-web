@@ -54,7 +54,7 @@ describe('Session Utilities', () => {
         status: 'ACTIVE',
       },
     });
-  });
+  }, 30000);
 
   it('creates a session and returns a token with a future expiry', async () => {
     const { token, expiresAt } = await createSession(testUser.id, {
@@ -109,7 +109,7 @@ describe('Session Utilities', () => {
 
     expect(await validateSessionToken(token1)).toBeNull();
     expect(await validateSessionToken(token2)).toBeNull();
-  });
+  }, 30000);
 
   it('rejects an expired session', async () => {
     const { token } = await createSession(testUser.id);

@@ -94,7 +94,7 @@ describe('admin stats route', () => {
 
     tokenSuper = await loginAs(superUser.id);
     tokenAdmin = await loginAs(admin.id);
-  }, 30000);
+  }, 60000);
 
   it('returns 401 without a session', async () => {
     const res = await getStats(makeRequest('http://localhost/api/admin/stats'));

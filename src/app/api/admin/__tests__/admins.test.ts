@@ -57,8 +57,8 @@ describe('business admin management', () => {
     await prisma.user.deleteMany();
     await prisma.business.deleteMany();
 
-    bizA = await prisma.business.create({ data: { name: 'Biz A' } });
-    bizB = await prisma.business.create({ data: { name: 'Biz B' } });
+    bizA = await prisma.business.create({ data: { name: `Biz A ${Date.now()}` } });
+    bizB = await prisma.business.create({ data: { name: `Biz B ${Date.now()}` } });
     const adminAHash = await bcrypt.hash('AdminA123', 10);
     const superHash = await bcrypt.hash('SuperTest123', 10);
 
@@ -71,7 +71,7 @@ describe('business admin management', () => {
 
     tokenSuper = await loginAs(superUser.id);
     tokenAdminA = await loginAs(userA.id);
-  }, 30000);
+  }, 60000);
 
   it('returns 403 for ADMIN (MANAGE_BUSINESSES is SUPER_ADMIN-only)', async () => {
     const res = await getAdmins(

@@ -64,9 +64,10 @@ describe('auth route flows', () => {
     });
   }, 30000);
 
-  afterEach(() => {
+  afterEach(async () => {
     clearSmtpEnv();
     __resetTransporterCache();
+    await prisma.rateLimit.deleteMany().catch(() => {});
   });
 
   it('rejects a bad password with 401 and writes LOGIN_FAILED', async () => {
