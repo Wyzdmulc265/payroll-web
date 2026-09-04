@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
-  Loader2, Table, Download as DownloadIcon
+  Loader2, Table, Download as DownloadIcon, Info, AlertCircle
 } from 'lucide-react';
 import { escapeCsvCell, csvField } from '@/lib/csv';
+import { PeriodPicker } from '@/components/PeriodPicker';
 
 const REPORT_TYPES = [
   'Payroll Register',
@@ -29,29 +30,12 @@ interface ReportData {
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<ReportType>('Payroll Register');
-  const [periods, setPeriods] = useState<string[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [departments, setDepartments] = useState<string[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState<string>('All');
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const currentYear = new Date().getFullYear();
-  const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-
-  const fetchPeriods = async () => {
-    try {
-      const res = await fetch('/api/dashboard');
-      const data = await res.json();
-      if (data.success && data.data.periods) {
-        setPeriods(data.data.periods);
-        setSelectedPeriod((prev) => prev || data.data.periods[0] || suggestedPeriod);
-      }
-    } catch (error) {
-      console.error('Failed to fetch periods:', error);
-    }
-  };
 
   const fetchDepartments = async () => {
     try {
@@ -69,7 +53,6 @@ export default function ReportsPage() {
   useEffect(() => {
     // Initial data load: setLoading fires synchronously inside the fetch helper by design.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPeriods();
     fetchDepartments();
   }, []);
 
@@ -188,31 +171,10 @@ export default function ReportsPage() {
               </select>
             </div>
             <div>
-              <label className="label">Period *</label>
-              <select
+              <PeriodPicker
                 value={selectedPeriod}
-                onChange={(e) => setSelectedPeriod(e.target.value)}
-                className="input"
-              >
-                {selectedPeriod && !periods.includes(selectedPeriod) && (
-                  <option value={selectedPeriod}>{selectedPeriod}</option>
-                )}
-                {periods.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-              <input
-                type="month"
-                aria-label="Pick a new period (YYYY-MM)"
-                title="Pick a new period (YYYY-MM)"
-                value={selectedPeriod}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (!v) return;
-                  setSelectedPeriod(v);
-                  setPeriods((prev) => (prev.includes(v) ? prev : [v, ...prev]));
-                }}
-                className="input mt-2"
+                onChange={setSelectedPeriod}
+                label="Period *"
               />
             </div>
             <div>
@@ -328,21 +290,5 @@ export default function ReportsPage() {
         )}
       </main>
     </div>
-  );
-}
-
-function Info({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  );
-}
-
-function AlertCircle({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-    </svg>
   );
 }

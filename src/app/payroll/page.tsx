@@ -4,11 +4,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { 
   Calculator, CheckCircle, AlertCircle,
-  FileText, RefreshCw, Save, Plus
+  FileText, RefreshCw, Save, Plus, Info
 } from 'lucide-react';
 import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings } from '@/lib/payroll-engine';
 import { FringeBenefitType, BenefitPaymentMethod, FringeBenefitInput, calculateBenefitValue } from '@/lib/fbt-engine';
 import { useToast } from '@/hooks/useToast';
+import { PeriodPicker } from '@/components/PeriodPicker';
 
 interface Employee {
   id: string;
@@ -53,7 +54,6 @@ interface PayrollRow {
 export default function PayrollPage() {
   const { showToast, Toast } = useToast();
   const [payrollRows, setPayrollRows] = useState<PayrollRow[]>([]);
-  const [periods, setPeriods] = useState<string[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -210,20 +210,6 @@ export default function PayrollPage() {
     }
   };
 
-  const fetchPeriods = async () => {
-    try {
-      const res = await fetch('/api/dashboard');
-      const data = await res.json();
-      if (data.success && data.data.periods) {
-        const existing: string[] = data.data.periods;
-        setPeriods(existing);
-        setSelectedPeriod(prev => prev || existing[0] || suggestedPeriod);
-      }
-    } catch (error) {
-      console.error('Failed to fetch periods:', error);
-    }
-  };
-
   const fetchConfig = async (period?: string) => {
     try {
       const res = await fetch('/api/settings');
@@ -246,7 +232,6 @@ export default function PayrollPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPeriods();
     fetchConfig();
   }, []);
 
@@ -461,34 +446,12 @@ export default function PayrollPage() {
             <h1 className="text-2xl font-semibold text-gray-900">Payroll Processing</h1>
           </div>
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600" htmlFor="payroll-period">Period</label>
-            <select
+            <PeriodPicker
+              value={selectedPeriod}
+              onChange={setSelectedPeriod}
+              disabled={status !== 'idle' && status !== 'loaded'}
+              label="Period"
               id="payroll-period"
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="input w-auto"
-              disabled={status !== 'idle' && status !== 'loaded'}
-            >
-              {selectedPeriod && !periods.includes(selectedPeriod) && (
-                <option value={selectedPeriod}>{selectedPeriod}</option>
-              )}
-              {periods.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-            <input
-              type="month"
-              aria-label="New payroll period"
-              title="Pick a new period (YYYY-MM)"
-              value={selectedPeriod}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                setSelectedPeriod(v);
-                setPeriods((prev) => (prev.includes(v) ? prev : [v, ...prev]));
-              }}
-              disabled={status !== 'idle' && status !== 'loaded'}
-              className="input w-auto"
             />
             <button onClick={fetchEmployees} disabled={loading} aria-label="Refresh payroll data" title="Refresh" className="btn-secondary">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -1039,14 +1002,5 @@ export default function PayrollPage() {
       </main>
       <Toast />
     </div>
-  );
-}
-
-// Missing Info icon
-function Info({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
   );
 }

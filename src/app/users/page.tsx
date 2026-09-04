@@ -193,12 +193,12 @@ export default function UsersPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        showToast(json.error ?? 'Failed to deactivate user');
+        showToast(json.error ?? 'Failed to deactivate user', 'error');
         return;
       }
       await fetchUsers();
     } catch {
-      showToast('A network error occurred. Please try again.');
+      showToast('A network error occurred. Please try again.', 'error');
     }
   }
 

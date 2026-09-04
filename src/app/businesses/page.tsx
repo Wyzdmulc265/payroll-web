@@ -182,7 +182,7 @@ function BusinessesPageInner() {
         });
         const json = await res.json();
         if (!res.ok) {
-          showToast(json.error ?? 'Failed to update admin');
+          showToast(json.error ?? 'Failed to update admin', 'error');
           return;
         }
       } else {
@@ -194,7 +194,7 @@ function BusinessesPageInner() {
         });
         const json = await res.json();
         if (!res.ok) {
-          showToast(json.error ?? 'Failed to create admin');
+          showToast(json.error ?? 'Failed to create admin', 'error');
           return;
         }
       }
@@ -203,7 +203,7 @@ function BusinessesPageInner() {
       setAdminForm(emptyAdminForm);
       await fetchAdmins(drawerBusiness!.id);
     } catch {
-      showToast('A network error occurred. Please try again.');
+      showToast('A network error occurred. Please try again.', 'error');
     } finally {
       setAdminSubmitting(false);
     }
@@ -218,12 +218,12 @@ function BusinessesPageInner() {
       });
       const json = await res.json();
       if (!res.ok) {
-        showToast(json.error ?? 'Failed to deactivate admin');
+        showToast(json.error ?? 'Failed to deactivate admin', 'error');
         return;
       }
       await fetchAdmins(drawerBusiness!.id);
     } catch {
-      showToast('A network error occurred. Please try again.');
+      showToast('A network error occurred. Please try again.', 'error');
     }
   }
 
@@ -330,12 +330,12 @@ function BusinessesPageInner() {
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        showToast(json.error ?? 'Failed to deactivate business');
+        showToast(json.error ?? 'Failed to deactivate business', 'error');
         return;
       }
       await fetchBusinesses();
     } catch {
-      showToast('A network error occurred. Please try again.');
+      showToast('A network error occurred. Please try again.', 'error');
     } finally {
       setSaving(false);
     }

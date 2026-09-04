@@ -404,10 +404,10 @@ export default function SettingsPage() {
         setSettings(prev => prev.filter(s => s.key !== key));
         showToast(`Deleted "${key}"`);
       } else {
-        showToast(data.error || 'Delete failed');
+        showToast(data.error || 'Delete failed', 'error');
       }
     } catch {
-      showToast('Network error');
+      showToast('Network error', 'error');
     }
   }, [showToast]);
 
@@ -454,7 +454,7 @@ export default function SettingsPage() {
         });
         const json = await res.json();
         if (!res.ok) {
-          showToast(json.error ?? 'Failed to update account');
+          showToast(json.error ?? 'Failed to update account', 'error');
           return;
         }
         if (accountForm.newPassword) {
@@ -464,7 +464,7 @@ export default function SettingsPage() {
           setAccountForm({ email: json.data.email, newPassword: '', confirmPassword: '', currentPassword: '' });
         }
       } catch {
-        showToast('A network error occurred. Please try again.');
+        showToast('A network error occurred. Please try again.', 'error');
       } finally {
         setAccountSaving(false);
       }
@@ -575,7 +575,7 @@ export default function SettingsPage() {
       setFormData({ key: '', value: '', description: '', category: activeCategory, effectiveFrom: new Date().toISOString().split('T')[0] });
       showToast('Setting saved');
     } catch {
-      showToast('Save failed');
+      showToast('Save failed', 'error');
     }
   };
 
@@ -729,7 +729,7 @@ export default function SettingsPage() {
                 await saveToApi('COMPANY', updates);
                 showToast('Company settings saved');
               } catch (e) {
-                showToast(e instanceof Error ? e.message : 'Save failed');
+                showToast(e instanceof Error ? e.message : 'Save failed', 'error');
               }
             }}
             disabled={saving === 'COMPANY'}
@@ -764,7 +764,7 @@ export default function SettingsPage() {
                 await saveToApi('PAYROLL', updates);
                 showToast('Payroll settings saved');
               } catch (e) {
-                showToast(e instanceof Error ? e.message : 'Save failed');
+                showToast(e instanceof Error ? e.message : 'Save failed', 'error');
               }
             }}
             disabled={saving === 'PAYROLL'}
@@ -1082,7 +1082,7 @@ export default function SettingsPage() {
                 await saveToApi('STATUTORY', updates);
                 showToast('Statutory settings saved');
               } catch (e) {
-                showToast(e instanceof Error ? e.message : 'Save failed');
+                showToast(e instanceof Error ? e.message : 'Save failed', 'error');
               }
             }}
             disabled={saving === 'STATUTORY'}
@@ -1118,7 +1118,7 @@ export default function SettingsPage() {
                 await saveToApi('SYSTEM', updates);
                 showToast('System settings saved');
               } catch (e) {
-                showToast(e instanceof Error ? e.message : 'Save failed');
+                showToast(e instanceof Error ? e.message : 'Save failed', 'error');
               }
             }}
             disabled={saving === 'SYSTEM'}

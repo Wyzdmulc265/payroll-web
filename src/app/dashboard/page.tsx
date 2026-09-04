@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   Users, DollarSign, CreditCard, Banknote,
-  Building, Building2, Loader2, RefreshCw,
+  Building, Building2, Loader2, RefreshCw, AlertCircle,
   BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon
 } from 'lucide-react';
+import { PeriodPicker } from '@/components/PeriodPicker';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -68,46 +69,28 @@ const COLORS = ['#1e40af', '#059669', '#dc2626', '#d97706', '#7c3aed', '#0891b2'
 
 export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [periods, setPeriods] = useState<string[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [loading, setLoading] = useState(true);
-
-  const currentYear = new Date().getFullYear();
-  const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const [error, setError] = useState<string | null>(null);
 
   const fetchDashboard = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/dashboard?period=${selectedPeriod}`);
       const data = await res.json();
       if (data.success) {
         setDashboardData(data.data);
+      } else {
+        setError(data.error || 'Failed to load dashboard');
       }
-    } catch (error) {
-      console.error('Failed to fetch dashboard:', error);
+    } catch (err) {
+      console.error('Failed to fetch dashboard:', err);
+      setError('Network error loading dashboard');
     } finally {
       setLoading(false);
     }
   };
-
-  const fetchPeriods = async () => {
-    try {
-      const res = await fetch('/api/dashboard');
-      const data = await res.json();
-      if (data.success && data.data.periods) {
-        setPeriods(data.data.periods);
-        setSelectedPeriod((prev) => prev || data.data.periods[0] || suggestedPeriod);
-      }
-    } catch (error) {
-      console.error('Failed to fetch periods:', error);
-    }
-  };
-
-  useEffect(() => {
-    // Initial data load: setLoading fires synchronously inside the fetch helper by design.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPeriods();
-  }, []);
 
   useEffect(() => {
     if (selectedPeriod) {
@@ -183,11 +166,13 @@ export default function DashboardPage() {
     );
   }
 
+  const currency = dashboardData?.currency || 'MWK';
+
   const formatCompact = (value: number) => {
-    if (value >= 1e9) return `MWK ${(value / 1e9).toFixed(1)}B`;
-    if (value >= 1e6) return `MWK ${(value / 1e6).toFixed(1)}M`;
-    if (value >= 1e3) return `MWK ${(value / 1e3).toFixed(1)}K`;
-    return `MWK ${value.toFixed(0)}`;
+    if (value >= 1e9) return `${currency} ${(value / 1e9).toFixed(1)}B`;
+    if (value >= 1e6) return `${currency} ${(value / 1e6).toFixed(1)}M`;
+    if (value >= 1e3) return `${currency} ${(value / 1e3).toFixed(1)}K`;
+    return `${currency} ${value.toFixed(0)}`;
   };
 
   return (
@@ -201,32 +186,11 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
           </div>
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600" htmlFor="dashboard-period">Period</label>
-            <select
+            <PeriodPicker
+              value={selectedPeriod}
+              onChange={setSelectedPeriod}
+              label="Period"
               id="dashboard-period"
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="input w-auto"
-            >
-              {selectedPeriod && !periods.includes(selectedPeriod) && (
-                <option value={selectedPeriod}>{selectedPeriod}</option>
-              )}
-              {periods.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-            <input
-              type="month"
-              aria-label="Pick a period (YYYY-MM)"
-              title="Pick a period (YYYY-MM)"
-              value={selectedPeriod}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                setSelectedPeriod(v);
-                setPeriods((prev) => (prev.includes(v) ? prev : [v, ...prev]));
-              }}
-              className="input w-auto"
             />
             <button onClick={fetchDashboard} disabled={loading} aria-label="Refresh dashboard" title="Refresh" className="btn-secondary">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -237,6 +201,14 @@ export default function DashboardPage() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+        {/* Error Banner */}
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+        )}
+
         {/* KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {kpiCards.map((kpi) => (

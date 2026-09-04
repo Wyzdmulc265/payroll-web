@@ -7,6 +7,7 @@ import {
   ChevronLeft, AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/payroll-engine';
+import { PeriodPicker } from '@/components/PeriodPicker';
 
 interface PayslipData {
   companyName: string;
@@ -69,16 +70,12 @@ interface Employee {
 
 export default function PayslipsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [periods, setPeriods] = useState<string[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [payslip, setPayslip] = useState<PayslipData | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const currentYear = new Date().getFullYear();
-  const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 
   const fetchEmployees = async () => {
     try {
@@ -92,24 +89,10 @@ export default function PayslipsPage() {
     }
   };
 
-  const fetchPeriods = async () => {
-    try {
-      const res = await fetch('/api/dashboard');
-      const data = await res.json();
-      if (data.success && data.data.periods) {
-        setPeriods(data.data.periods);
-        setSelectedPeriod((prev) => prev || data.data.periods[0] || suggestedPeriod);
-      }
-    } catch (error) {
-      console.error('Failed to fetch periods:', error);
-    }
-  };
-
   useEffect(() => {
     // Initial data load: setLoading fires synchronously inside the fetch helper by design.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEmployees();
-    fetchPeriods();
   }, []);
 
   const loadPayslip = async () => {
@@ -190,34 +173,10 @@ export default function PayslipsPage() {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Payslip</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <div>
-              <label className="label">Payroll Period *</label>
-              <select
+              <PeriodPicker
                 value={selectedPeriod}
-                onChange={(e) => setSelectedPeriod(e.target.value)}
-                className="input"
-              >
-                {selectedPeriod && !periods.includes(selectedPeriod) && (
-                  <option value={selectedPeriod}>{selectedPeriod}</option>
-                )}
-                {periods.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Or pick period</label>
-              <input
-                type="month"
-                aria-label="Pick a new period (YYYY-MM)"
-                title="Pick a new period (YYYY-MM)"
-                value={selectedPeriod}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (!v) return;
-                  setSelectedPeriod(v);
-                  setPeriods((prev) => (prev.includes(v) ? prev : [v, ...prev]));
-                }}
-                className="input"
+                onChange={setSelectedPeriod}
+                label="Payroll Period *"
               />
             </div>
             <div>
@@ -280,7 +239,7 @@ export default function PayslipsPage() {
               </button>
               <button onClick={exportPDF} disabled={generating} className="btn-primary">
                 <Download className="h-4 w-4 mr-2" />
-                {generating ? 'Exporting...' : 'Export PDF'}
+                {generating ? 'Exporting...' : 'Print / Save as PDF'}
               </button>
             </div>
           </div>
@@ -355,7 +314,7 @@ export default function PayslipsPage() {
                   <thead>
                     <tr>
                       <th className="w-1/2">Description</th>
-                      <th className="text-right">Amount (MWK)</th>
+                      <th className="text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -396,7 +355,7 @@ export default function PayslipsPage() {
                   <thead>
                     <tr>
                       <th className="w-1/2">Description</th>
-                      <th className="text-right">Amount (MWK)</th>
+                      <th className="text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -421,7 +380,7 @@ export default function PayslipsPage() {
                   <thead>
                     <tr>
                       <th className="w-1/2">Description</th>
-                      <th className="text-right">Amount (MWK)</th>
+                      <th className="text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -452,7 +411,7 @@ export default function PayslipsPage() {
                   <thead>
                     <tr>
                       <th className="w-1/2">Description</th>
-                      <th className="text-right">Amount (MWK)</th>
+                      <th className="text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody>

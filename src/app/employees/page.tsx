@@ -216,11 +216,11 @@ export default function EmployeesPage() {
         fetchEmployees();
         showToast('Employee deactivated');
       } else {
-        showToast(data.error || 'Failed to deactivate');
+        showToast(data.error || 'Failed to deactivate', 'error');
       }
     } catch (error) {
       console.error('Error deactivating employee:', error);
-      showToast('Network error');
+      showToast('Network error', 'error');
     }
   };
 
