@@ -285,7 +285,7 @@ export default function AuditLogsPage() {
                       )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-gray-700">
-                      {formatTimestamp(log.timestamp.toISOString())}
+                      {formatTimestamp(log.timestamp)}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">{log.action}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-gray-700">{log.entityType}</td>

@@ -56,7 +56,8 @@ function isSameOrigin(request: NextRequest): boolean {
       return false;
     }
   }
-  return true;
+  // No Origin or Referer header — treat as untrusted (e.g. curl, Postman, server-to-server).
+  return false;
 }
 
 export function proxy(request: NextRequest) {
@@ -107,6 +108,7 @@ export function proxy(request: NextRequest) {
     maxAge: 0,
     path: '/',
     httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
   });
   return response;

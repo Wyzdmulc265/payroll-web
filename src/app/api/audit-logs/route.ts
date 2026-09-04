@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
     const dto = rows.map(
       (r): AuditLogDto => ({
         id: r.id,
-        timestamp: r.timestamp,
+        timestamp: r.timestamp.toISOString(),
         action: r.action,
         entityType: r.entityType,
         entityId: r.entityId,

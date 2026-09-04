@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { formatCurrency } from '@/lib/payroll-engine';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
+import { decryptPii } from '@/lib/encryption';
 
 export async function GET(
   request: NextRequest,
@@ -50,7 +51,7 @@ export async function GET(
     });
     const settingsMap = Object.fromEntries(settings.map(s => [s.key, s.value]));
 
-    const employee = payrollRecord.employee;
+    const employee = decryptPii(payrollRecord.employee);
 
     const payslip = {
       // Company Info

@@ -96,7 +96,7 @@ describe('mail module', () => {
   });
 
   describe('sendPasswordResetEmail — missing SMTP config (development)', () => {
-    it('logs the reset link to the console and does not call sendMail', async () => {
+    it('logs a security-safe message to the console and does not call sendMail', async () => {
       clearSmtpEnv();
       vi.stubEnv('NODE_ENV', 'test');
       vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://payroll.example.com');
@@ -107,9 +107,9 @@ describe('mail module', () => {
       expect(createTransport).not.toHaveBeenCalled();
       expect(sendMail).not.toHaveBeenCalled();
       expect(spy).toHaveBeenCalledTimes(1);
-      expect(spy.mock.calls[0][0]).toContain(
-        'https://payroll.example.com/reset-password/devtok',
-      );
+      // Token is intentionally omitted from logs for security
+      expect(spy.mock.calls[0][0]).toContain('user@example.com');
+      expect(spy.mock.calls[0][0]).not.toContain('devtok');
     });
   });
 

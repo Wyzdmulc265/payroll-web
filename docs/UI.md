@@ -123,12 +123,13 @@ dialog.
 **Fetchers:** `GET /api/employees?page=…&search=…&department=…&status=…`,
 `POST`, `PUT`, `DELETE`.
 
+**Department list:** the filter `<select>` and the Add/Edit modal offer the
+union of departments configured in Settings → Company
+(`company.departments`) and departments already seen on employees, so a
+department can be pre-defined before anyone is hired into it. On a business
+with neither, the modal hints to add departments in Settings.
+
 **Known issues** (see IMPROVEMENTS):
-- The department `<select>` in the Add/Edit modal hard-codes
-  `IT/Finance/HR/Sales/Admin`. Add an employee with "Operations"
-  and the modal will reject it.
-- `fetchDepartments` is dead code — `fetchEmployees` already
-  extracts departments from results.
 - The modal is ~200 lines; should be extracted as `<EmployeeForm />`.
 
 ### 3.3 `/payroll` — `src/app/payroll/page.tsx`
@@ -199,7 +200,7 @@ will execute when opened in Excel. See IMPROVEMENTS.
 
 | Tab | What it edits |
 | --- | --- |
-| **COMPANY** | `company_name`, `company_address`, `company_phone`, `company_email`, `company_tpin`, `company_pension_fund`. Drives the payslip header. |
+| **COMPANY** | `company_name`, `company_address`, `company_phone`, `company_email`, `company_tpin`, `company_pension_fund`. Drives the payslip header. Plus a **Departments** editor (add/remove, saved as `company.departments` JSON with the tab's batch save) that feeds the employee form's department list. |
 | **PAYROLL** | `working_hours_per_day`, `working_days_per_month`, `currency`, `decimal_places`. |
 | **STATUTORY** | Pension rates, TEVET, fringe benefit tax (with helper text noting the default 30% and Malawi Taxation Act source), overtime multipliers, **PAYE band editor** with a live preview (`bandPreviewTax` — a small local PAYE calc that duplicates the engine's). |
 | **SYSTEM** | Free-form app-level settings. |

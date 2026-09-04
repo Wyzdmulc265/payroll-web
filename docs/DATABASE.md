@@ -215,7 +215,15 @@ All values are stored as `text` (string) for portability.
 
 ```header
 company_name, company_address, company_phone, company_email, company_tpin, company_pension_fund
+company.departments
 ```
+
+`company.departments` holds a JSON array of department names (max 50, each
+≤ 100 chars, enforced by `validateDepartmentsValue` in
+`src/lib/departments.ts` on the settings write paths). It feeds the employee
+form's department list; the employee API itself accepts any non-empty
+department string, so historically assigned departments keep working even if
+absent from the list.
 
 **PAYROLL**:
 

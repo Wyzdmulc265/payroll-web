@@ -73,6 +73,7 @@ async function main() {
   
   const settings = [
     // Company Settings
+    { key: 'company.departments', value: JSON.stringify(['Admin', 'Finance', 'HR', 'IT', 'Sales']), description: 'Department list for the employee form', category: 'COMPANY', effectiveFrom: new Date('2024-01-01') },
     { key: 'company_name', value: 'WizTech Solutions Ltd', description: 'Legal company name', category: 'COMPANY', effectiveFrom: new Date('2024-01-01') },
     { key: 'company_address', value: 'P.O. Box 1234, Blantyre, Malawi', description: 'Registered address', category: 'COMPANY', effectiveFrom: new Date('2024-01-01') },
     { key: 'company_phone', value: '+265 1 123 4567', description: 'Contact phone', category: 'COMPANY', effectiveFrom: new Date('2024-01-01') },

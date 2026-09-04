@@ -15,7 +15,7 @@ const GENERIC_FAILURE = 'Invalid email or password';
 
 export async function POST(request: NextRequest) {
   const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const key = `${ipAddress}:${request.headers.get('user-agent') ?? 'unknown'}`;
+  const key = ipAddress;
   const limit = await checkLoginRateLimit(key);
 
   if (!limit.allowed) {

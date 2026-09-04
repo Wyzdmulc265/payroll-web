@@ -10,6 +10,7 @@ import {
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { formatCurrency, previewPAYE } from '@/lib/payroll-engine';
+import { DEPARTMENTS_SETTING_KEY, MAX_DEPARTMENTS, MAX_DEPARTMENT_LENGTH, parseDepartmentsSetting } from '@/lib/departments';
 import { FbtRuleType, FbtClassification, FringeBenefitType } from '@/lib/fbt-engine';
 import { useToast } from '@/hooks/useToast';
 import { useCurrentUser } from '@/components/UserContext';
@@ -288,6 +289,9 @@ export default function SettingsPage() {
   });
 
   const [companyForm, setCompanyForm] = useState<Record<string, string>>({});
+  const [departmentsForm, setDepartmentsForm] = useState<string[]>([]);
+  const [newDepartment, setNewDepartment] = useState('');
+  const [departmentsError, setDepartmentsError] = useState<string | null>(null);
   const [payrollForm, setPayrollForm] = useState<Record<string, string>>({});
   const [pensionForm, setPensionForm] = useState<Record<string, string>>({});
   const [otherStatutoryForm, setOtherStatutoryForm] = useState<Record<string, string>>({});
@@ -331,6 +335,11 @@ export default function SettingsPage() {
       return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
     });
 
+    setDepartmentsForm(prev => {
+      const next = parseDepartmentsSetting(map[DEPARTMENTS_SETTING_KEY]);
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+
     setPayrollForm(prev => {
       const next: Record<string, string> = {};
       PAYROLL_FIELDS.forEach(f => { next[f.key] = map[f.key] ?? ''; });
@@ -364,18 +373,26 @@ export default function SettingsPage() {
   }, [settings]);
 
   const saveToApi = useCallback(async (category: Category, updates: Record<string, string>) => {
-    const entries = Object.entries(updates);
-    const payload = entries.map(([key, value]) => ({ key, value, category }));
-    const res = await fetch('/api/settings/batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Batch save failed');
+    // Drive the per-tab Saving... spinner + disabled state (the buttons key
+    // off `saving`). Previously nothing ever set it, so clicks gave no
+    // feedback and users double-submitted.
+    setSaving(category);
+    try {
+      const entries = Object.entries(updates);
+      const payload = entries.map(([key, value]) => ({ key, value, category }));
+      const res = await fetch('/api/settings/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Batch save failed');
+      }
+      await fetchSettings();
+    } finally {
+      setSaving(null);
     }
-    await fetchSettings();
   }, [fetchSettings]);
 
   const handleDelete = useCallback(async (key: string) => {
@@ -639,6 +656,17 @@ export default function SettingsPage() {
     }
   };
 
+  const addDepartment = () => {
+    const name = newDepartment.trim();
+    if (!name) { setDepartmentsError('Enter a department name'); return; }
+    if (name.length > MAX_DEPARTMENT_LENGTH) { setDepartmentsError(`Department names must be at most ${MAX_DEPARTMENT_LENGTH} characters`); return; }
+    if (departmentsForm.some(d => d.toLowerCase() === name.toLowerCase())) { setDepartmentsError(`"${name}" is already listed`); return; }
+    if (departmentsForm.length >= MAX_DEPARTMENTS) { setDepartmentsError(`At most ${MAX_DEPARTMENTS} departments are allowed`); return; }
+    setDepartmentsError(null);
+    setDepartmentsForm(prev => [...prev, name]);
+    setNewDepartment('');
+  };
+
   const renderCompanyForm = () => (
     <div className="space-y-4">
       {COMPANY_FIELDS.map(field => (
@@ -648,12 +676,55 @@ export default function SettingsPage() {
           {field.helper && <p className="text-xs text-gray-500 mt-1">{field.helper}</p>}
         </div>
       ))}
+      <div>
+        <label className="label">Departments</label>
+        <p className="text-xs text-gray-500 mt-1 mb-2">Used by the employee form&apos;s department list. Saved with Company settings.</p>
+        {departmentsForm.length > 0 ? (
+          <ul className="mb-2 divide-y divide-gray-100 rounded-lg border border-gray-200">
+            {departmentsForm.map((dept) => (
+              <li key={dept.toLowerCase()} className="flex items-center justify-between px-3 py-1.5 text-sm text-gray-800">
+                {dept}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDepartmentsError(null);
+                    setDepartmentsForm(prev => prev.filter(d => d.toLowerCase() !== dept.toLowerCase()));
+                  }}
+                  className="text-xs font-medium text-red-600 hover:text-red-800"
+                  aria-label={`Remove department ${dept}`}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mb-2 text-xs text-gray-400">No departments yet — add the first one below.</p>
+        )}
+        {departmentsError && <p className="mb-2 text-xs text-red-600">{departmentsError}</p>}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newDepartment}
+            onChange={(e) => setNewDepartment(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDepartment(); } }}
+            className="input flex-1"
+            placeholder="e.g. Operations"
+            maxLength={MAX_DEPARTMENT_LENGTH}
+            aria-label="New department name"
+          />
+          <button type="button" onClick={addDepartment} className="btn-secondary shrink-0">
+            <Plus className="h-4 w-4 mr-1" /> Add
+          </button>
+        </div>
+      </div>
       <div className="pt-4 border-t border-gray-200">
           <button
             type="button"
             onClick={async () => {
               const updates: Record<string, string> = {};
               COMPANY_FIELDS.forEach(f => { if (companyForm[f.key] !== undefined) updates[f.key] = companyForm[f.key]; });
+              updates[DEPARTMENTS_SETTING_KEY] = JSON.stringify(departmentsForm);
               try {
                 await saveToApi('COMPANY', updates);
                 showToast('Company settings saved');

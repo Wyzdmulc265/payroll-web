@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
 import { buildStatutoryConfigFromSettings, validateTaxBands } from '@/lib/payroll-engine';
+import { DEPARTMENTS_SETTING_KEY, validateDepartmentsValue } from '@/lib/departments';
 
 const settingSchema = z.object({
   key: z.string(),
@@ -26,6 +27,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = batchSchema.parse(body);
 
+    for (const row of validatedData) {
+      if (row.key === DEPARTMENTS_SETTING_KEY) {
+        const deptError = validateDepartmentsValue(row.value);
+        if (deptError) {
+          return NextResponse.json({ success: false, error: deptError }, { status: 400 });
+        }
+      }
+    }
+
     const hasStatutory = validatedData.some((row) => row.category === 'STATUTORY');
     if (hasStatutory) {
       const allSettings = await prisma.settings.findMany({ where: { businessId } });
@@ -33,13 +43,26 @@ export async function POST(request: NextRequest) {
       for (const row of validatedData) {
         settingsMap[row.key] = row.value;
       }
-      const config = buildStatutoryConfigFromSettings(settingsMap);
+      // buildStatutoryConfigFromSettings throws on invalid bands — convert
+      // to a 400 with the validation message instead of a 500.
+      let config;
+      try {
+        config = buildStatutoryConfigFromSettings(settingsMap);
+      } catch (e) {
+        return NextResponse.json(
+          { success: false, error: e instanceof Error ? e.message : 'Invalid statutory configuration' },
+          { status: 400 },
+        );
+      }
       const bandError = validateTaxBands(config.taxBands);
       if (bandError) {
         return NextResponse.json({ success: false, error: bandError }, { status: 400 });
       }
     }
 
+    // Explicit timeouts: the default 5 s interactive-transaction budget is too
+    // small for a multi-row batch on cold/pooled connections (Neon), which
+    // expired the transaction and surfaced as 500 "Internal server error".
     const results = await prisma.$transaction(
       validatedData.map((row) =>
         prisma.settings.upsert({
@@ -57,7 +80,8 @@ export async function POST(request: NextRequest) {
             business: { connect: { id: businessId } },
           },
         })
-      )
+      ),
+      { timeout: 15000, maxWait: 10000 },
     );
 
     await logAuditEvent({

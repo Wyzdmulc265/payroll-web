@@ -102,7 +102,7 @@ export async function sendPasswordResetEmail(to: string, token: string): Promise
 
   if (!configured) {
     if (process.env.NODE_ENV !== 'production') {
-      console.info(`[mail] SMTP not configured — password reset link for ${to}: ${resetUrl}`);
+      console.info(`[mail] SMTP not configured — password reset link for ${to} (token omitted from logs for security)`);
       return;
     }
     throw new Error(

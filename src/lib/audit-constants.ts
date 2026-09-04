@@ -108,7 +108,10 @@ export type AuditLogQuery = {
  */
 export type AuditLogDto = {
   id: string;
-  timestamp: Date;
+  // ISO-8601 string, not Date: the DTO crosses the JSON transport boundary,
+  // which serializes Date to string. Serializing explicitly at the API edge
+  // keeps this contract honest so clients never call Date methods on it.
+  timestamp: string;
   action: string;
   entityType: string;
   entityId: string | null;

@@ -3,6 +3,7 @@ import prisma, { Prisma } from '@/lib/prisma';
 import { formatCurrency, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { logAuditEvent, getRequestIp } from '@/lib/audit';
+import { decryptPii } from '@/lib/encryption';
 
 export async function GET(request: NextRequest) {
   try {
@@ -214,13 +215,16 @@ export async function GET(request: NextRequest) {
         headers = ['Bank Name', 'Account Number', 'Employee ID', 'Employee Name', 'Net Pay'];
         reportData = records
           .filter(r => r.employee.bankName && r.employee.accountNumber)
-          .map(r => [
-            r.employee.bankName!,
-            r.employee.accountNumber!,
-            r.employee.employeeId,
-            r.employee.fullName,
-            formatCurrency(Number(r.netPay)),
-          ]);
+          .map(r => {
+            const emp = decryptPii(r.employee);
+            return [
+              emp.bankName!,
+              emp.accountNumber!,
+              r.employee.employeeId,
+              r.employee.fullName,
+              formatCurrency(Number(r.netPay)),
+            ];
+          });
         break;
 
       case 'Employee Earnings History':

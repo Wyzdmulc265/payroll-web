@@ -3,6 +3,7 @@ import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
+import { encryptPii, decryptPii, decryptPiiArray } from '@/lib/encryption';
 
 const employeeSchema = z.object({
   employeeId: z.string().regex(/^EMP\d{3}$/, 'Employee ID must be in format EMPXXX'),
@@ -75,9 +76,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      // Prisma Decimal serializes to a string in JSON; coerce money fields to
-      // numbers so clients never receive strings that would concatenate on "+".
-      data: employees.map((e) => ({
+      data: decryptPiiArray(employees).map((e) => ({
         ...e,
         basicSalary: Number(e.basicSalary),
         allowances: Number(e.allowances),
@@ -125,9 +124,29 @@ export async function POST(request: NextRequest) {
     }
 
     const employee = await prisma.$transaction(async (tx) => {
+      const encryptedData = encryptPii({
+        employeeId: validatedData.employeeId,
+        firstName: validatedData.firstName,
+        lastName: validatedData.lastName,
+        nationalId: validatedData.nationalId,
+        department: validatedData.department,
+        position: validatedData.position,
+        employmentType: validatedData.employmentType,
+        basicSalary: validatedData.basicSalary,
+        salaryFrequency: validatedData.salaryFrequency,
+        allowances: validatedData.allowances,
+        bankName: validatedData.bankName,
+        accountNumber: validatedData.accountNumber,
+        paymentMethod: validatedData.paymentMethod,
+        pensionApplicable: validatedData.pensionApplicable,
+        taxStatus: validatedData.taxStatus,
+        taxNumber: validatedData.taxNumber,
+        notes: validatedData.notes,
+      });
+
       const created = await tx.employee.create({
         data: {
-          ...validatedData,
+          ...encryptedData,
           business: { connect: { id: businessId } },
           fullName: `${validatedData.firstName} ${validatedData.lastName}`,
           employmentDate: new Date(validatedData.employmentDate),

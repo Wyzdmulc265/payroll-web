@@ -3,6 +3,7 @@ import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
+import { encryptPii, decryptPii } from '@/lib/encryption';
 
 const updateEmployeeSchema = z.object({
   firstName: z.string().min(1).optional(),
@@ -55,7 +56,7 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: employee });
+    return NextResponse.json({ success: true, data: decryptPii(employee) });
   } catch (error) {
     console.error('Error fetching employee:', error);
     return NextResponse.json(
@@ -94,6 +95,15 @@ export async function PUT(
     }
     if (validatedData.employmentDate) {
       updateData.employmentDate = new Date(validatedData.employmentDate);
+    }
+
+    // Encrypt PII fields before storing
+    for (const field of ['nationalId', 'accountNumber', 'taxNumber'] as const) {
+      const val = (updateData as Record<string, unknown>)[field];
+      if (typeof val === 'string') {
+        const { encrypt } = await import('@/lib/encryption');
+        (updateData as Record<string, unknown>)[field] = encrypt(val);
+      }
     }
 
     const employee = await prisma.$transaction(async (tx) => {

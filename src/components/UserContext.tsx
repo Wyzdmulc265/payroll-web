@@ -11,17 +11,18 @@ export interface CurrentUser {
   businessId: string | null;
 }
 
-const UserContext = createContext<CurrentUser | null>(null);
+const UserContext = createContext<CurrentUser | null | undefined>(undefined);
 
 /**
  * Fetches the current user from /api/auth/me once on mount and makes it
- * available to all children via useCurrentUser(). A null value means the
- * user is not authenticated (the proxy will have already redirected the
- * browser to /login before this point, so null is only observable during
- * the brief initial render).
+ * available to all children via useCurrentUser(). Tri-state: `undefined`
+ * while the request is in flight (so shells like MainNav can render
+ * skeletons instead of a blank panel), `null` when not authenticated (the
+ * proxy will have already redirected the browser to /login before this
+ * point, so null is only observable transiently).
  */
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [user, setUser] = useState<CurrentUser | null | undefined>(undefined);
 
   useEffect(() => {
     fetch('/api/auth/me', { credentials: 'same-origin' })
@@ -29,10 +30,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
       .then((json) => {
         if (json?.success && json?.data) {
           setUser(json.data as CurrentUser);
+        } else {
+          setUser(null);
         }
       })
       .catch(() => {
-        // Network error — leave user as null; proxy will redirect if needed.
+        // Network error — mark as unauthenticated; proxy will redirect if needed.
+        setUser(null);
       });
   }, []);
 
@@ -40,9 +44,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Returns the currently authenticated user, or null if not yet loaded /
- * not authenticated.
+ * Returns the currently authenticated user: `undefined` while loading,
+ * `null` if not authenticated.
  */
-export function useCurrentUser(): CurrentUser | null {
+export function useCurrentUser(): CurrentUser | null | undefined {
   return useContext(UserContext);
 }

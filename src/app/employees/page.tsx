@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Search, Edit, Trash2, 
   Loader2, XCircle, ChevronLeft, ChevronRight
@@ -8,6 +8,7 @@ import {
 import { formatCurrency } from '@/lib/payroll-engine';
 import Link from 'next/link';
 import { useToast } from '@/hooks/useToast';
+import { DEPARTMENTS_SETTING_KEY, parseDepartmentsSetting } from '@/lib/departments';
 
 interface Employee {
   id: string;
@@ -52,6 +53,14 @@ export default function EmployeesPage() {
   const [departmentFilter, setDepartmentFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [departments, setDepartments] = useState<string[]>([]);
+  // Departments configured in Settings → Company (`company.departments`),
+  // merged with departments already seen on employees so pre-defined
+  // departments are selectable before anyone is hired into them.
+  const [configuredDepartments, setConfiguredDepartments] = useState<string[]>([]);
+  const allDepartments = useMemo(
+    () => [...new Set([...configuredDepartments, ...departments])].sort((a, b) => a.localeCompare(b)),
+    [configuredDepartments, departments],
+  );
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [formData, setFormData] = useState({
@@ -107,6 +116,20 @@ export default function EmployeesPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEmployees();
   }, [pagination.page, search, departmentFilter, statusFilter]);
+
+  useEffect(() => {
+    // Configured departments (Settings → Company), once per mount.
+    fetch('/api/settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        const rows = Array.isArray(json?.data) ? json.data : [];
+        const found = rows.find((s: { key: string }) => s.key === DEPARTMENTS_SETTING_KEY);
+        setConfiguredDepartments(parseDepartmentsSetting(found?.value));
+      })
+      .catch(() => {
+        // Non-fatal: the form still offers departments seen on employees.
+      });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -275,7 +298,7 @@ export default function EmployeesPage() {
                 className="input"
               >
                 <option value="All">All Departments</option>
-                {departments.map((dept) => (
+                {allDepartments.map((dept) => (
                   <option key={dept} value={dept}>{dept}</option>
                 ))}
               </select>
@@ -500,10 +523,13 @@ export default function EmployeesPage() {
                     required
                   >
                     <option value="">Select Department</option>
-                    {departments.map((dept) => (
+                    {allDepartments.map((dept) => (
                       <option key={dept} value={dept}>{dept}</option>
                     ))}
                   </select>
+                  {allDepartments.length === 0 && (
+                    <p className="text-xs text-gray-500 mt-1">No departments yet — add them in Settings → Company.</p>
+                  )}
                   {formErrors.department && <p className="text-sm text-danger mt-1">{formErrors.department}</p>}
                 </div>
                 <div>

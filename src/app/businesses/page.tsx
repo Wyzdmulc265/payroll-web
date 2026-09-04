@@ -247,6 +247,14 @@ function BusinessesPageInner() {
     if (!createForm.name.trim()) { setCreateError('Business name is required'); return; }
     if (createForm.adminEmail && !createForm.adminPassword) { setCreateError('Initial admin password is required'); return; }
     if (createForm.adminPassword && createForm.adminPassword !== createForm.adminConfirm) { setCreateError('Passwords do not match'); return; }
+    // Mirror the server password policy (passwordSchema) so a weak password
+    // is rejected here with a clear message instead of a bare 400.
+    if (createForm.adminEmail) {
+      const pwd = createForm.adminPassword;
+      if (pwd.length < 8) { setCreateError('Initial admin password must be at least 8 characters'); return; }
+      if (!/[A-Z]/.test(pwd)) { setCreateError('Initial admin password must contain at least one uppercase letter'); return; }
+      if (!/[0-9]/.test(pwd)) { setCreateError('Initial admin password must contain at least one number'); return; }
+    }
     setCreating(true);
     fetch('/api/businesses', {
       method: 'POST',
@@ -262,7 +270,12 @@ function BusinessesPageInner() {
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok || !json.success) {
-          setCreateError(json.error ?? 'Failed to create business');
+          // Surface per-field server messages (e.g. Zod details) so a 400
+          // is actionable instead of a bare "Validation error".
+          const detail = Array.isArray(json.details)
+            ? json.details.map((d: { message?: string }) => d?.message).filter(Boolean).join('; ')
+            : '';
+          setCreateError(detail ? `${json.error ?? 'Failed to create business'}: ${detail}` : (json.error ?? 'Failed to create business'));
           return;
         }
         setShowCreate(false);
@@ -480,6 +493,7 @@ function BusinessesPageInner() {
                 <label className="label" htmlFor="biz-admin-pass">Initial admin password</label>
                 <input id="biz-admin-pass" type="password" className="input" value={createForm.adminPassword}
                   onChange={(e) => setCreateForm({ ...createForm, adminPassword: e.target.value })} />
+                <p className="mt-1 text-xs text-gray-400">Min 8 characters, one uppercase letter, one number.</p>
               </div>
               <div>
                 <label className="label" htmlFor="biz-admin-confirm">Confirm password</label>

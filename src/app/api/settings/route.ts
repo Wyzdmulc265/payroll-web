@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
 import { buildStatutoryConfigFromSettings, validateTaxBands } from '@/lib/payroll-engine';
+import { DEPARTMENTS_SETTING_KEY, validateDepartmentsValue } from '@/lib/departments';
 
 const settingSchema = z.object({
   key: z.string(),
@@ -90,11 +91,28 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = settingSchema.parse(body);
 
+    if (validatedData.key === DEPARTMENTS_SETTING_KEY) {
+      const deptError = validateDepartmentsValue(validatedData.value);
+      if (deptError) {
+        return NextResponse.json({ success: false, error: deptError }, { status: 400 });
+      }
+    }
+
     if (validatedData.category === 'STATUTORY') {
       const allSettings = await prisma.settings.findMany({ where: { businessId } });
       const settingsMap = Object.fromEntries(allSettings.map((s) => [s.key, s.value]));
       settingsMap[validatedData.key] = validatedData.value;
-      const config = buildStatutoryConfigFromSettings(settingsMap);
+      // buildStatutoryConfigFromSettings throws on invalid bands — convert
+      // to a 400 with the validation message instead of a 500.
+      let config;
+      try {
+        config = buildStatutoryConfigFromSettings(settingsMap);
+      } catch (e) {
+        return NextResponse.json(
+          { success: false, error: e instanceof Error ? e.message : 'Invalid statutory configuration' },
+          { status: 400 },
+        );
+      }
       const bandError = validateTaxBands(config.taxBands);
       if (bandError) {
         return NextResponse.json({ success: false, error: bandError }, { status: 400 });
@@ -130,7 +148,9 @@ export async function POST(request: NextRequest) {
       }, tx);
 
       return updated;
-    });
+      // Explicit timeouts (see batch route): the default 5 s budget can expire
+      // on cold/pooled connections, surfacing as 500 "Internal server error".
+    }, { timeout: 15000, maxWait: 10000 });
 
     return NextResponse.json({ success: true, data: setting });
   } catch (error) {
