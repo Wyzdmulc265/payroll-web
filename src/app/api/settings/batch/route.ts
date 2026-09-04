@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
@@ -60,29 +60,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Explicit timeouts: the default 5 s interactive-transaction budget is too
-    // small for a multi-row batch on cold/pooled connections (Neon), which
-    // expired the transaction and surfaced as 500 "Internal server error".
-    const results = await prisma.$transaction(
-      validatedData.map((row) =>
-        prisma.settings.upsert({
-          where: { key_businessId: { key: row.key, businessId } },
-          update: {
-            value: row.value,
-            description: row.description,
-            category: row.category,
-            effectiveFrom: row.effectiveFrom ? new Date(row.effectiveFrom) : new Date(),
-            business: { connect: { id: businessId } },
-          },
-          create: {
-            ...row,
-            effectiveFrom: row.effectiveFrom ? new Date(row.effectiveFrom) : new Date(),
-            business: { connect: { id: businessId } },
-          },
-        })
-      ),
-      { timeout: 15000, maxWait: 10000 },
-    );
+    // Single-statement batch upsert: the previous N-row interactive
+    // $transaction (one round-trip per upsert) exceeded even a 15 s budget
+    // on cold/pooled connections (Neon, ~1-3 s per query), expiring the
+    // transaction and surfacing as 500 "Internal server error" on PAYROLL /
+    // STATUTORY / SYSTEM tabs. A single INSERT ... ON CONFLICT is one
+    // round-trip, implicitly atomic, and has no interactive-transaction
+    // timeout to expire. businessId is guaranteed non-null above, so the
+    // (key, business_id) conflict target always applies.
+    await prisma.$executeRaw`
+      INSERT INTO "settings" ("id", "key", "value", "description", "category", "effective_from", "business_id")
+      VALUES ${Prisma.join(
+        validatedData.map((row) =>
+          Prisma.sql`(gen_random_uuid(), ${row.key}, ${row.value}, ${row.description ?? null}, ${row.category}, ${row.effectiveFrom ? new Date(row.effectiveFrom) : new Date()}, ${businessId})`,
+        ),
+      )}
+      ON CONFLICT ("key", "business_id") DO UPDATE SET
+        "value" = EXCLUDED."value",
+        "description" = EXCLUDED."description",
+        "category" = EXCLUDED."category",
+        "effective_from" = EXCLUDED."effective_from"
+    `;
+    const results = await prisma.settings.findMany({
+      where: { businessId, key: { in: validatedData.map((row) => row.key) } },
+    });
 
     await logAuditEvent({
       action: 'SETTINGS_BATCH_UPDATED',
