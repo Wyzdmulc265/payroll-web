@@ -12,7 +12,7 @@ function makeRequest(url: string, cookie?: string): NextRequest {
 }
 
 function sessionCookie(token: string): string {
-  return `payroll_session=${token}`;
+  return `__Host-payroll_session=${token}`;
 }
 
 async function loginAs(userId: string): Promise<string> {

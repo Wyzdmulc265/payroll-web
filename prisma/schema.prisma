@@ -118,7 +118,8 @@ model Employee {
   firstName         String    @map("first_name")
   lastName          String    @map("last_name")
   fullName          String?   @map("full_name")
-  nationalId        String?   @unique @map("national_id")
+  nationalId        String?   @map("national_id")
+  nationalIdHash    String?   @map("national_id_hash")
   employmentStatus  String    @default("Active") @map("employment_status")
   department        String
   position          String
@@ -146,6 +147,8 @@ model Employee {
   @@index([department])
   @@index([employmentStatus])
   @@index([isActive])
+  @@index([businessId, isActive])
+  @@index([nationalIdHash])
   @@map("employees")
 }
 
@@ -209,6 +212,9 @@ model PayrollRecord {
   @@index([employeeId])
   @@index([businessId])
   @@index([runByUserId])
+  @@index([businessId, payrollPeriod])
+  @@index([businessId, employeeId])
+  @@index([businessId, department])
   @@map("payroll_records")
 }
 

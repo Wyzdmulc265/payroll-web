@@ -144,7 +144,7 @@ describe('Session Utilities', () => {
     const expiresAt = new Date(Date.now() + 60_000);
     setSessionCookie(response as unknown as NextResponse, 'test-token', expiresAt);
 
-    const cookie = response.cookies.get('payroll_session') as Record<string, unknown> | undefined;
+    const cookie = response.cookies.get('__Host-payroll_session') as Record<string, unknown> | undefined;
     expect(cookie).toBeDefined();
     expect(cookie!.httpOnly).toBe(true);
     expect(cookie!.sameSite).toBe('lax');
@@ -156,7 +156,7 @@ describe('Session Utilities', () => {
     const response = createMockResponse();
     clearSessionCookie(response as unknown as NextResponse);
 
-    const cookie = response.cookies.get('payroll_session') as Record<string, unknown> | undefined;
+    const cookie = response.cookies.get('__Host-payroll_session') as Record<string, unknown> | undefined;
     expect(cookie).toBeDefined();
     expect(cookie!.value).toBe('');
     expect(cookie!.maxAge).toBe(0);

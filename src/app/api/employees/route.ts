@@ -3,7 +3,12 @@ import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
-import { encryptPii, decryptPii, decryptPiiArray } from '@/lib/encryption';
+import { encryptPii, decryptPiiArray } from '@/lib/encryption';
+import { createHash } from 'node:crypto';
+
+function hashNationalId(nationalId: string): string {
+  return createHash('sha256').update(nationalId.trim().toLowerCase()).digest('hex');
+}
 
 const employeeSchema = z.object({
   employeeId: z.string().regex(/^EMP\d{3}$/, 'Employee ID must be in format EMPXXX'),
@@ -39,7 +44,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const asOf = searchParams.get('asOf');
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const rawLimit = parseInt(searchParams.get('limit') || '20');
+    const limit = Math.min(rawLimit, 100);
     const skip = (page - 1) * limit;
 
     const where: Prisma.EmployeeWhereInput = { businessId: session.user.businessId };
@@ -123,6 +129,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (validatedData.nationalId) {
+      const nationalIdHash = hashNationalId(validatedData.nationalId);
+      const duplicateNationalId = await prisma.employee.findFirst({
+        where: { businessId, nationalIdHash },
+      });
+      if (duplicateNationalId) {
+        return NextResponse.json(
+          { success: false, error: 'An employee with this National ID already exists' },
+          { status: 400 }
+        );
+      }
+    }
+
     const employee = await prisma.$transaction(async (tx) => {
       const encryptedData = encryptPii({
         employeeId: validatedData.employeeId,
@@ -144,9 +163,12 @@ export async function POST(request: NextRequest) {
         notes: validatedData.notes,
       });
 
+      const nationalIdHash = validatedData.nationalId ? hashNationalId(validatedData.nationalId) : null;
+
       const created = await tx.employee.create({
         data: {
           ...encryptedData,
+          nationalIdHash,
           business: { connect: { id: businessId } },
           fullName: `${validatedData.firstName} ${validatedData.lastName}`,
           employmentDate: new Date(validatedData.employmentDate),

@@ -3,7 +3,12 @@ import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
-import { encryptPii, decryptPii } from '@/lib/encryption';
+import { decryptPii } from '@/lib/encryption';
+import { createHash } from 'node:crypto';
+
+function hashNationalId(nationalId: string): string {
+  return createHash('sha256').update(nationalId.trim().toLowerCase()).digest('hex');
+}
 
 const updateEmployeeSchema = z.object({
   firstName: z.string().min(1).optional(),
@@ -89,6 +94,19 @@ export async function PUT(
       );
     }
 
+    if (validatedData.nationalId) {
+      const nationalIdHash = hashNationalId(validatedData.nationalId);
+      const duplicate = await prisma.employee.findFirst({
+        where: { businessId, nationalIdHash, NOT: { id } },
+      });
+      if (duplicate) {
+        return NextResponse.json(
+          { success: false, error: 'An employee with this National ID already exists' },
+          { status: 400 }
+        );
+      }
+    }
+
     const updateData: Prisma.EmployeeUpdateInput = { ...validatedData };
     if (validatedData.firstName || validatedData.lastName) {
       updateData.fullName = `${validatedData.firstName || existing.firstName} ${validatedData.lastName || existing.lastName}`;
@@ -104,6 +122,12 @@ export async function PUT(
         const { encrypt } = await import('@/lib/encryption');
         (updateData as Record<string, unknown>)[field] = encrypt(val);
       }
+    }
+
+    if (validatedData.nationalId) {
+      (updateData as Record<string, unknown>).nationalIdHash = hashNationalId(validatedData.nationalId);
+    } else {
+      (updateData as Record<string, unknown>).nationalIdHash = null;
     }
 
     const employee = await prisma.$transaction(async (tx) => {

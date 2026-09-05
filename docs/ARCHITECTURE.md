@@ -214,7 +214,7 @@ The application uses a **custom session system** (not `next-auth`).
 User → /login (credentials form)
         ↓ POST /api/auth/login
   createSession(userId) → SHA-256 token hash stored in Session row
-        ↓ Set-Cookie: payroll_session (HttpOnly, SameSite=Lax)
+         ↓ Set-Cookie: __Host-payroll_session (HttpOnly, SameSite=Lax)
   Proxy (src/proxy.ts) → blocks /api/* for unauthed requests
         ↓
   Route handlers → getSessionContext(request) resolves SessionContext

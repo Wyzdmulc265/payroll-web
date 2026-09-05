@@ -16,7 +16,7 @@ import type { NextRequest } from 'next/server';
 
 // Must match the constant in src/lib/auth/session.ts without importing it
 // (importing from lib would pull Prisma into the proxy runtime).
-const SESSION_COOKIE = 'payroll_session';
+const SESSION_COOKIE = '__Host-payroll_session';
 
 /** Paths that are publicly accessible without authentication. */
 const PUBLIC_PATHS: (string | RegExp)[] = [

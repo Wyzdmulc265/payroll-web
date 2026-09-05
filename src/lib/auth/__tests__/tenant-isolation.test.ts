@@ -14,7 +14,7 @@ function makeRequest(url: string, cookie?: string, body?: unknown): NextRequest 
 }
 
 function sessionCookie(token: string): string {
-  return `payroll_session=${token}`;
+  return `__Host-payroll_session=${token}`;
 }
 
 describe('tenant isolation', () => {

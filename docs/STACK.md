@@ -177,7 +177,7 @@ has been removed from `package.json`, which also eliminates the
   hash is persisted (never the raw token).
 - **Token lifetime**: 24 hours. Expired or inactive-user sessions are
   rejected by `validateSessionToken` and deleted.
-- **Cookie**: `payroll_session`, HttpOnly, SameSite=Lax, Secure in
+- **Cookie**: `__Host-payroll_session`, HttpOnly, SameSite=Lax, Secure in
   production.
 - **Rate limiting**: `RateLimit` model; 5 attempts per 15-minute window
   per client key (`IP + User-Agent`).

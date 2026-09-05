@@ -18,7 +18,7 @@ function makeRequest(url: string, cookie?: string, method = 'GET', body?: unknow
 }
 
 function sessionCookie(token: string): string {
-  return `payroll_session=${token}`;
+  return `__Host-payroll_session=${token}`;
 }
 
 let tokenCounter = 0;
