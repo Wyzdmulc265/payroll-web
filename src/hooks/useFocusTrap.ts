@@ -7,11 +7,11 @@ import { useEffect, useCallback, useRef, type RefObject } from 'react';
  *   const ref = useRef<HTMLElement>(null);
  *   useFocusTrap(isOpen, ref);
  *
- * The hook:
- *  - focuses the first focusable element on mount (or the container itself if
- *    there are no focusable children).
- *  - cycles Tab/Shift+Tab between the first and last focusable element.
- *  - returns focus to the previously focused element on unmount.
+ * Behaviour:
+ *  - focuses the first focusable element (or the container) when the modal opens,
+ *  - cycles Tab/Shift+Tab between the first and last focusable control,
+ *  - returns focus to the element that had it before the modal opened on
+ *    unmount (only if that element is still in the document).
  */
 export function useFocusTrap<T extends HTMLElement>(
   isOpen: boolean,
@@ -72,8 +72,12 @@ export function useFocusTrap<T extends HTMLElement>(
     return () => {
       clearTimeout(id);
       document.removeEventListener('keydown', onKeyDown);
-      // Restore focus to the element that had it before the modal opened.
-      previousActiveElement.current?.focus?.();
+      // Restore focus only if the previous element is still in the document
+      // (it may have been unmounted by React when the modal closed).
+      const el = previousActiveElement.current;
+      if (el && document.contains(el)) {
+        el.focus();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, focusFirst]);

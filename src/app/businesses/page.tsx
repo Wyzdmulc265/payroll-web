@@ -296,12 +296,21 @@ function BusinessesPageInner() {
       .finally(() => setCreating(false));
   }
 
-  function openEdit(b: BusinessDto) {
+  const openEdit = useCallback((b: BusinessDto) => {
     setEditing(b);
     setEditName(b.name);
     setEditStatus(b.status);
     setEditError(null);
-  }
+  }, []);
+
+  const handleBackOrClose = useCallback(() => {
+    const wentBack = typeof window !== 'undefined' && window.history.length > 1;
+    if (wentBack) {
+      window.history.back();
+    } else {
+      setEditing(null);
+    }
+  }, []);
 
   function handleSaveEdit(e: FormEvent) {
     e.preventDefault();
@@ -542,7 +551,7 @@ function BusinessesPageInner() {
               </div>
               {editError && <p className="text-sm text-red-600">{editError}</p>}
               <div className="flex justify-between gap-2 pt-2">
-                <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>
+                <button type="button" className="btn-secondary" onClick={handleBackOrClose}>
                   <ChevronLeft className="h-4 w-4 mr-1" /> Back
                 </button>
                 <div className="flex gap-2">
