@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, Search, Edit, Trash2, 
   Loader2, XCircle, ChevronLeft, ChevronRight
@@ -8,6 +8,7 @@ import {
 import { formatCurrency } from '@/lib/payroll-engine';
 import Link from 'next/link';
 import { useToast } from '@/hooks/useToast';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { DEPARTMENTS_SETTING_KEY, parseDepartmentsSetting } from '@/lib/departments';
 
 interface Employee {
@@ -85,6 +86,9 @@ export default function EmployeesPage() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(showModal, modalRef);
 
   const fetchEmployees = async () => {
     setLoading(true);
@@ -443,6 +447,7 @@ export default function EmployeesPage() {
           onKeyDown={(e) => { if (e.key === 'Escape') handleCloseModal(); }}
         >
           <div
+            ref={modalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="employeeModalTitle"

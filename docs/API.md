@@ -11,11 +11,16 @@ This document lists every HTTP route exposed by WizTech Payroll Web.
 - `ZodError` is mapped to `400` with a per-field `details` array.
 - All money is returned as **JS `number`**, not string — the routes
   `Number()`-coerce Prisma `Decimal` values at the boundary.
-- All write paths emit an `AuditLog` row.
-- Core API routes require an active session cookie. Route permissions return `401`
-  for missing/invalid sessions and `403` for insufficient role permissions.
-- Business-owned queries are scoped from the authenticated user's `businessId`;
-  callers cannot supply a business ID to override that scope.
+- All write paths emit an `AuditLog` row in the same `$transaction` as
+  the data mutation.
+- Core API routes require an active `__Host-payroll_session` cookie.
+  Route permissions return `401` for missing/invalid sessions and `403`
+  for insufficient role permissions.
+- Business-owned queries are scoped from the authenticated user's
+  `businessId`; callers cannot supply a business ID to override that scope.
+- Mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) are rejected at
+  the proxy if they lack a same-origin `Origin` or `Referer` header
+  (CSRF guard).
 
 ## Authentication
 
@@ -62,6 +67,24 @@ a deployment follow-up.
 Accepts `{ "token": "..." , "newPassword": "StrongPass1" }`, consumes a pending
 token, updates the password, and invalidates all existing sessions.
 
+### `PATCH /api/auth/account`
+
+Updates the authenticated user's own email and/or password. Requires an
+active session. The current password must be provided for verification.
+On success, invalidates all sessions (forces re-login).
+
+**Body** (all optional):
+
+```json
+{ "email": "new@example.com", "currentPassword": "OldPass1", "password": "NewPass1" }
+```
+
+**Response `200`**: `{ success: true, data: { <safe user fields> } }`.
+
+---
+
+## 0. Users (Phase 7)
+
 ### `GET /api/users`
 
 List users in the actor's business, newest first, paginated.
@@ -100,7 +123,7 @@ Create a user in the actor's business.
 - `role` is restricted to `ADMIN | PAYROLL_OPERATOR | VIEWER`; `SUPER_ADMIN` is
   rejected (`400`) to prevent privilege escalation.
 - Password follows the shared policy (min 8 chars, one uppercase, one number).
-- Password is hashed with bcryptjs (10 rounds); `businessId` is taken from the
+- Password is hashed with `bcryptjs` (10 rounds); `businessId` is taken from the
   session, never the request body.
 - `400` on duplicate email **within the actor's business** (the same address
   may exist in another business) or validation failure; requires `MANAGE_USERS`.
@@ -153,7 +176,7 @@ List employees, paginated and filterable.
 | `search` | `string` | — | Case-insensitive search over `firstName`, `lastName`, `employeeId`. |
 | `asOf` | `string` `YYYY-MM-DD` | — | When provided, only employees whose `employmentDate` is on or before this date are returned. Used by the payroll page to exclude employees hired after the selected pay period. |
 | `page` | `number` | `1` | 1-indexed. |
-| `limit` | `number` | `20` | Page size. |
+| `limit` | `number` | `20` | Page size. Capped at 100. |
 
 **Response `200`**:
 
@@ -188,6 +211,7 @@ Create one employee. Zod schema in source (lines 5–24 of
 - `employmentDate` is coerced via `z.coerce.date()`.
 - `basicSalary` is `z.number().positive()`.
 - On duplicate `employeeId`: `400 { success: false, error: "Employee ID already exists" }`.
+- On duplicate `nationalId` within the same business: `400 { success: false, error: "An employee with this National ID already exists" }`. Detection uses a SHA-256 hash; the raw value is encrypted at rest.
 - Emits `AuditLog` with `action: 'EMPLOYEE_CREATED'`, `user` set to the
   authenticated user's email.
 
@@ -201,9 +225,11 @@ Fetch one employee, including the last 12 `PayrollRecord`s.
 
 ### `PUT /api/employees/:id`
 
-Partial update. Re-validates against a derived schema (`employeeSchema.partial()`).
-Recomputes `fullName` if either name changes. Emits `AuditLog` with
-`action: 'UPDATE'` and `oldValue` / `newValue` JSON snapshots.
+Partial update. Re-validated against `updateEmployeeSchema`. Recomputes
+`fullName` if either name changes. If `nationalId` is provided, the route
+checks for duplicates within the same business (excluding the current
+record) using `nationalIdHash`. Emits `AuditLog` with `action: 'EMPLOYEE_UPDATED'`
+and `oldValue` / `newValue` JSON snapshots.
 
 ### `DELETE /api/employees/:id`
 
@@ -485,6 +511,41 @@ Delete the row whose `key` matches.
 
 > **Audit** — this endpoint emits a `SETTINGS_DELETED` audit event.
 
+### `POST /api/settings/batch`
+
+Atomically upsert multiple settings in a single request. Uses a single
+`INSERT ... ON CONFLICT DO UPDATE` statement for atomicity and performance.
+
+**Body** (Zod-validated array, min 1 item):
+
+```json
+[
+  {
+    "key": "statutory.pension_ee_rate",
+    "value": "5",
+    "description": "Employee pension contribution %",
+    "category": "STATUTORY",
+    "effectiveFrom": "2024-07-01"
+  },
+  {
+    "key": "statutory.tevet_levy_rate",
+    "value": "1",
+    "category": "STATUTORY"
+  }
+]
+```
+
+- Validates `company.departments` values if present.
+- If any row has `category: 'STATUTORY'`, the entire batch is validated
+  against the engine's `buildStatutoryConfigFromSettings` and
+  `validateTaxBands` before writing. A `400` is returned if bands have
+  gaps or overlaps.
+- `MANAGE_SETTINGS` required.
+- Emits a single `SETTINGS_BATCH_UPDATED` audit event with the full
+  `newData` array.
+
+**Response `200`**: `{ success: true, data: [<setting>, ...] }`.
+
 ---
 
 ## 6. Dashboard
@@ -512,6 +573,59 @@ Returns the full dashboard payload:
 - `charts.headcountTrend` — last 12 periods, `[{ period, count }]`.
 
 **Response `200`**: full payload as above.
+
+---
+
+## 6. Admin (SUPER_ADMIN only)
+
+### `GET /api/admin/stats`
+
+Returns platform-wide counts and recent businesses for the SUPER_ADMIN
+home dashboard.
+
+**Response `200`**:
+
+```json
+{
+  "success": true,
+  "data": {
+    "counts": { "businesses": 5, "admins": 12, "payrollRecords": 340 },
+    "recentBusinesses": [
+      { "id": "...", "name": "Acme Ltd", "status": "ACTIVE", "createdAt": "...", "_count": { "users": 3, "employees": 20 } }
+    ]
+  }
+}
+```
+
+- `MANAGE_BUSINESSES` required; `ADMIN` gets `403`.
+
+### `GET /api/admin/businesses/[id]/admins`
+
+List ADMIN users for a business.
+
+**Response `200`**: `{ success: true, data: [<user>, ...] }`.
+
+### `POST /api/admin/businesses/[id]/admins`
+
+Create an ADMIN user for a business.
+
+**Body**: `{ "email": string, "password": string }`.
+
+**Response `201`**: `{ success: true, data: <user> }`.
+
+### `PUT /api/admin/businesses/[id]/admins/[userId]`
+
+Update an ADMIN's email.
+
+**Body**: `{ "email"?: string }`.
+
+**Response `200`**: `{ success: true, data: <user> }`.
+
+### `DELETE /api/admin/businesses/[id]/admins/[userId]`
+
+Deactivate an ADMIN (soft delete).
+
+**Response `200`**: `{ success: true }`.
 
 ---
 
@@ -580,10 +694,11 @@ per-user churn).
 
 | Status | When |
 | --- | --- |
-| `400` | `ZodError` (validation); explicit pre-conditions (e.g. payroll already exists for period; non-Monthly employee in `/api/payroll`). |
+| `400` | `ZodError` (validation); explicit pre-conditions (e.g. payroll already exists for period; non-Monthly employee in `/api/payroll`; duplicate nationalId; invalid tax bands). |
 | `401` | Missing, invalid, or expired session cookie on protected routes. |
-| `403` | Authenticated user lacks the required role permission. |
-| `404` | `payslips/:id` when no record matches. |
+| `403` | Authenticated user lacks the required role permission; self-deactivation; cross-business access. |
+| `404` | `payslips/:id` when no record matches; unknown business/user/employee id. |
+| `422` | Business deactivation with active employees (if enforced). |
 | `429` | Too many login attempts; includes `Retry-After` header (seconds). |
 | `500` | Any unexpected error — logged with `console.error`, returns generic envelope. |
 

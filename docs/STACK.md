@@ -89,16 +89,30 @@ role it plays**, and **why it was chosen for this specific app**.
 - **Role**: Runs `prisma/seed.ts` (TypeScript) via the `prisma:seed` script.
 - **Why here**: Lets us write the seed in TypeScript without a build step.
 
-### `bcryptjs`
+### `bcryptjs@^3.0.3`
 - **Role**: Password hashing and verification for application users.
 - **Why here**: Provides a battle-tested adaptive password hash without storing
   plaintext credentials; the auth foundation uses 10 salt rounds.
+
+### `nodemailer@^9.1.1`
+- **Role**: SMTP transport for password reset emails via Brevo.
+- **Why here**: Lightweight, ESM-first, and works with any SMTP relay.
+  Password reset tokens are hashed before persistence; email delivery is
+  fire-and-forget with no blocking on the login path.
+
+### `decimal.js@^10.6.0`
+- **Role**: Arbitrary-precision decimal arithmetic for CSV/Excel report
+  roll-ups.
+- **Why here**: The payroll engine uses Prisma `Decimal` + `Number()` coercion,
+  but report summaries (department totals, statutory summaries) are computed
+  server-side from `number` values. `decimal.js` prevents floating-point drift
+  in those aggregations.
 
 ### Node.js `crypto`
 - **Role**: Generates opaque session and password-reset tokens and hashes them
   with SHA-256 before persistence.
 - **Why here**: Keeps bearer tokens out of the database while using the platform
-  cryptography implementation and HttpOnly cookies.
+  cryptography implementation and `__Host-` cookies.
 
 ---
 
@@ -187,21 +201,28 @@ has been removed from `package.json`, which also eliminates the
 
 ---
 
-## 6. PDF & Reporting
-
 ---
 
 ## 6. Testing
 
 ### `vitest@^3.0.8`
-- **Role**: Unit tests for `payroll-engine.ts` (~30 tests).
+- **Role**: Unit and integration tests for the payroll engine, FBT engine,
+  auth flows, and API routes.
 - **Why here**:
   - **The engine is the highest-risk code** (money math). It deserves
     a real test runner.
   - Vitest's watch mode + ESM-native runner is the modern default;
     the rest of the repo is ESM-first (Prisma 7, Next 16) so vitest
     fits without config.
-  - Currently `npm run test` runs `vitest run` (single pass, CI-ready).
+  - `npm run test` runs `vitest run` (single pass, CI-ready).
+  - `vitest.config.ts` configures the test environment, `@` path alias,
+    and 30s timeouts for integration tests against Neon.
+
+### `@playwright/test@^1.62.1`
+- **Role**: Browser smoke tests for critical user flows (login, payroll run,
+  employee CRUD).
+- **Why here**: Catches regressions that unit tests cannot — broken navigation,
+  CSS layout breaks, and API contract mismatches that still return 200.
 
 ### `@types/node`, `@types/react`, `@types/react-dom`, `@types/pg`
 - **Role**: Type definitions for Node, React, React DOM, and the `pg`
@@ -245,7 +266,7 @@ has been removed from `package.json`, which also eliminates the
 | `build` | `next build` | Production build. |
 | `start` | `next start` | Run the production build. |
 | `lint` | `eslint` | Lint check. |
-| `test` | `vitest run` | Run engine unit tests. |
+| `test` | `vitest run` | Run all tests (engine + integration). |
 | `postinstall` | `prisma generate` | Re-generate the Prisma client after `npm install`. |
 | `prisma:generate` | `prisma generate` | Manually regenerate the client. |
 | `prisma:migrate` | `prisma migrate dev` | Create + apply a new migration in dev. |
@@ -278,3 +299,16 @@ listed in [`README.md`](./README.md#why-this-app-is-special):
 
 Every choice above is in service of one of those qualities. If a new tool
 doesn't make at least one of them better, it doesn't belong here.
+
+### Security qualities
+
+- **`__Host-` cookies** → The session cookie cannot be injected by subdomains.
+- **CSRF guard in proxy** → Mutating requests without a same-origin `Origin`/`Referer`
+  are rejected at the edge.
+- **Rate limiting** → 5 login attempts per 15 minutes per `IP + User-Agent`.
+- **PII encryption** → `AES-256-GCM` field-level encryption for national IDs,
+  bank accounts, and tax numbers; transparent pass-through when no key is set.
+- **Security headers** → `X-Frame-Options: DENY`, `HSTS`, `Permissions-Policy`,
+  `Content-Security-Policy`, `Cache-Control: no-store` on API responses.
+- **Composite indexes** → `(businessId, payrollPeriod)`, `(businessId, employeeId)`,
+  `(businessId, department)` on `PayrollRecord`; `(businessId, isActive)` on `Employee`.

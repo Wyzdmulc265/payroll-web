@@ -350,8 +350,10 @@ That exact computation is one of the test cases in
 | `src/app/payroll/page.tsx` | Duplicates `calculateOvertimePay` locally to avoid the round-trip for the live preview. **Should import from the engine** — see IMPROVEMENTS. |
 | `src/app/settings/page.tsx` | Duplicates a small PAYE preview (`bandPreviewTax`) for the live PAYE band editor. **Should import from the engine** — see IMPROVEMENTS. |
 | `src/lib/payroll-engine.test.ts` | Vitest unit tests — every public function has at least one test. |
-| `src/lib/fbt-engine.ts` | Fringe Benefits Tax module — classification, valuation rules, and `calculateEmployerFBT` aggregation. Called from `calculatePayroll` when `fringeBenefits` are present. |
+| `src/lib/fbt-engine.ts` | Fringe Benefits Tax module — classification, valuation rules, and `calculateEmployerFBT` aggregation. Called from `calculatePayroll` when `fringeBenefits` are present. The FBT engine is a sibling pure module with its own types and tests. |
 | `src/lib/fbt-engine.test.ts` | Vitest unit tests for the FBT engine — 15+ test cases. |
+| `src/app/api/fbt/route.ts` | Returns the FBT breakdown for a single employee/period by loading the `PayrollRecord.fbtSnapshot` and `FringeBenefit` rows. |
+| `src/app/api/payslips/[id]/route.ts` | Includes `fringeBenefitBase`, `fringeBenefitTax`, and `fbtSummary` in the payslip payload when FBT is present. |
 
 ---
 

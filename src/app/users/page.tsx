@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Plus,
   Edit,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useCurrentUser } from '@/components/UserContext';
 import { useToast } from '@/hooks/useToast';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 type Role = 'ADMIN' | 'PAYROLL_OPERATOR' | 'VIEWER';
 type Status = 'ACTIVE' | 'INACTIVE';
@@ -57,6 +58,9 @@ export default function UsersPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(showModal, modalRef);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -324,6 +328,7 @@ export default function UsersPage() {
           onKeyDown={(e) => { if (e.key === 'Escape') closeModal(); }}
         >
           <div
+            ref={modalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="userModalTitle"

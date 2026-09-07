@@ -15,6 +15,13 @@ const VARIANT_STYLES: Record<ToastVariant, string> = {
   info: 'bg-blue-600 text-white',
 };
 
+const VARIANT_ARIA: Record<ToastVariant, 'success' | 'error' | 'status'> = {
+  success: 'success',
+  error: 'error',
+  warning: 'status',
+  info: 'status',
+};
+
 const VARIANT_ICONS: Record<ToastVariant, React.ComponentType<{ className?: string }>> = {
   success: CheckCircle,
   error: XCircle,
@@ -33,11 +40,20 @@ export function useToast() {
   const Toast = useCallback(() => {
     if (!toast) return null;
     const Icon = VARIANT_ICONS[toast.variant];
+    const ariaRole = VARIANT_ARIA[toast.variant];
     return (
-      <div className="fixed bottom-6 right-6 z-50" role="status" aria-live="polite">
+      <div className="fixed bottom-6 right-6 z-50" role={ariaRole} aria-live="polite">
         <div className={`${VARIANT_STYLES[toast.variant]} px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 max-w-sm`}>
-          <Icon className="h-5 w-5 shrink-0" />
+          <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
           <span className="text-sm font-medium">{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            aria-label="Dismiss notification"
+            className="ml-2 text-white/80 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60 rounded"
+          >
+            <XCircle className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       </div>
     );

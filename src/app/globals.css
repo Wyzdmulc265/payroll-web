@@ -17,6 +17,25 @@
     background-color: #f9fafb;
     color: #111827;
   }
+  /* Skip-to-content link: hidden off-screen by default, visible on focus. */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 100;
+    padding: 0.5rem 1rem;
+    background-color: #1e40af;
+    color: #ffffff;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .skip-link:focus {
+    left: 0.5rem;
+    top: 0.5rem;
+  }
 }
 
 @layer components {

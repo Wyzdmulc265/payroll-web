@@ -13,9 +13,9 @@ workflow with a modern, auditable, web-based system.
 
 The application implements **Malawi-specific statutory payroll calculations** — including
 progressive **PAYE (Pay-As-You-Earn) tax bands**, **pension contributions** (employee
-and employer), and the **TEVET (Technical, Entrepreneurial and Vocational Education
-and Training) levy** — so that monthly payroll can be calculated, reviewed, saved, and
-reproduced exactly for audit and reporting purposes.
+and employer), the **TEVET (Technical, Entrepreneurial and Vocational Education
+and Training) levy**, and **Fringe Benefits Tax (FBT)** — so that monthly payroll can be
+calculated, reviewed, saved, and reproduced exactly for audit and reporting purposes.
 
 ---
 
@@ -36,6 +36,9 @@ that make it special:
    - Overtime is split into three legally-distinct buckets: **normal (1.5×)**,
      **public-holiday (2×)**, and **off-day (2×)** — each calculated against the
      period-specific working-day count, not a flat 22.
+   - Fringe Benefits Tax (FBT) is computed per-employee per-period with type-specific
+     valuation rules (motor vehicles, housing, school fees, loans, etc.) and stored
+     as an audit-grade snapshot on each `PayrollRecord`.
 
 2. **Historical Reproducibility**
    - Every `PayrollRecord` stores a **JSON snapshot of the statutory configuration
@@ -64,11 +67,28 @@ that make it special:
 
 6. **Auditable by Design**
    - Every mutation (employee create/update/deactivate, payroll run, settings
-     change) writes an `AuditLog` row with a JSON snapshot of the old and new
-     values. This makes it possible to answer *"who changed what, when?"* — a
-     requirement in any regulated payroll environment.
+     change, business creation, user management) writes an `AuditLog` row with a JSON
+     snapshot of the old and new values. This makes it possible to answer *"who changed
+     what, when?"* — a requirement in any regulated payroll environment.
+   - The audit trail is cross-business for SUPER_ADMIN and business-scoped for
+     ADMIN, with IP address capture on every event.
 
-7. **Modern, Type-Safe Stack**
+7. **Multi-Tenant by Default**
+   - Every entity is scoped to a `Business`. Email addresses are unique **per business**,
+     so one person can hold accounts in multiple businesses. SUPER_ADMIN users have
+     no implicit business access and must explicitly select a business context.
+   - Tenant isolation is enforced at the API layer; business-scoped routes never
+     leak data across tenants.
+
+8. **Security Hardened**
+   - Custom session system with `__Host-` prefixed cookies, CSRF origin guards,
+     rate-limited login (5 attempts per 15 minutes), and bcrypt password hashing.
+   - Field-level AES-256-GCM encryption for PII (national ID, bank account, tax number)
+     with transparent pass-through when no encryption key is configured.
+   - Security headers: `X-Frame-Options: DENY`, `HSTS`, `Permissions-Policy`,
+     `Content-Security-Policy`, and `Cache-Control: no-store` on all API responses.
+
+9. **Modern, Type-Safe Stack**
    - Next.js 16 (App Router) + React 19 + TypeScript (strict) + Prisma 7 with the
      new driver-adapter pattern + PostgreSQL. Every API route is validated with
      **Zod**, and every money calculation has a tested code path.
@@ -79,13 +99,20 @@ that make it special:
 
 | Area | Features |
 | --- | --- |
-| **Employees** | CRUD with Zod-validated forms, search, paginated list, soft-delete (deactivate), per-employee 12-month payroll history. |
+| **Authentication** | Custom session system (no next-auth), scoped login by business name, password reset via Brevo SMTP, rate limiting, CSRF protection, `__Host-` cookies. |
+| **Authorization** | Role-based access (SUPER_ADMIN, ADMIN, PAYROLL_OPERATOR, VIEWER) with fine-grained permissions per endpoint. |
+| **Multi-Tenancy** | Business-scoped data, per-business email uniqueness, SUPER_ADMIN cross-business admin panel. |
+| **Employees** | CRUD with Zod-validated forms, search, paginated list, soft-delete (deactivate), per-employee 12-month payroll history, PII encryption. |
 | **Payroll Engine** | Malawi PAYE (4-band progressive), pension (EE/ER, capped), TEVET levy, three-bucket overtime, period-aware working-day count, statutory config loaded from settings, JSON config snapshot persisted to each `PayrollRecord`. |
 | **Payroll Runs** | "Calculate → Validate → Save" workflow. Live preview, bulk create in a single transaction, refuses re-runs of a closed period. |
+| **Fringe Benefits Tax** | Per-employee per-period FBT calculation with 8+ valuation rules, type-specific classification, audit-grade snapshot (`fbtSnapshot`), and Employer FBT on payslips. |
 | **Payslips** | Per-employee, per-period payslip view, browser-print-ready (`@media print`), with company info sourced from `Settings`. |
-| **Reports** | Payroll Register, Payroll Summary (department roll-up), Statutory Summary, Department Payroll, Bank Payment Schedule, Employee Earnings History. CSV and Excel (`.xls`) export. |
-| **Dashboard** | KPIs (active employees, gross/net, PAYE, pension EE/ER, employer cost), department payroll bar chart, 12-month payroll area chart, distribution pie, headcount line chart. |
-| **Settings** | Tabbed UI for COMPANY, PAYROLL, STATUTORY (with live PAYE band preview), SYSTEM, ADVANCED. Effective-dated keys; bulk save; per-key audit history. |
+| **Reports** | Payroll Register, Payroll Summary (department roll-up), Statutory Summary, Department Payroll, Bank Payment Schedule, Employee Earnings History. CSV and Excel (`.xls`) export with CSV-injection protection. |
+| **Dashboard** | KPIs (active employees, gross/net, PAYE, pension EE/ER, employer cost, FBT), department payroll bar chart, 12-month payroll area chart, distribution pie, headcount line chart. |
+| **Settings** | Tabbed UI for COMPANY, PAYROLL, STATUTORY (with live PAYE band preview), SYSTEM, ADVANCED. Effective-dated keys; batch save with atomic `INSERT ... ON CONFLICT`; per-key audit history. |
+| **Audit Logs** | Business-scoped audit trail for ADMIN, cross-business for SUPER_ADMIN. Searchable by action, entity, date range, employee. CSV export with CWE-1236 escaping. |
+| **User Management** | ADMIN creates/manages business users (ADMIN, PAYROLL_OPERATOR, VIEWER). Password hashing, role enforcement, self-deactivation prevention. |
+| **Business Management** | SUPER_ADMIN creates/renames/deactivates businesses. Initial admin user provisioning. Session invalidation on business deactivation. |
 
 ---
 
@@ -104,6 +131,9 @@ that make it special:
 | [`AI-DOCUMENTATION-INSTRUCTIONS.md`](./AI-DOCUMENTATION-INSTRUCTIONS.md) | The rules an AI must follow when documenting future changes. |
 | [`changes/`](./changes) | One Markdown file per code change — *what* changed, *why*, and *what got better*. |
 | [`bugsfix/`](./bugsfix) | One Markdown file per bug + its fix — *what* broke, *why*, and *how it was fixed*. |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Production deployment guide: environment, migrations, SMTP, CI/CD. |
+| [`TESTING.md`](./TESTING.md) | Testing guide: unit tests, integration tests, test DB isolation, Playwright. |
+| [`OPERATIONS.md`](./OPERATIONS.md) | Day-to-day operator guide: backup/restore, user management, audit review, troubleshooting. |
 
 ---
 
@@ -116,6 +146,7 @@ npm install
 # 2. Configure environment
 cp .env.example .env
 # Edit .env and set DATABASE_URL to your PostgreSQL connection string.
+# For tests, also set DATABASE_URL_TEST to a separate database.
 
 # 3. Apply migrations and seed
 npm run prisma:deploy
@@ -129,6 +160,18 @@ npm run dev
 npm run test
 ```
 
+### Environment Variables
+
+See `.env.example` for the full list. Key variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string (Neon or local). |
+| `DATABASE_URL_TEST` | Isolated test database. **Must** be separate from `DATABASE_URL`. |
+| `ENCRYPTION_KEY` | 32-byte hex key for PII field-level encryption. Leave empty in dev for pass-through. |
+| `SESSION_DURATION_DAYS` | Session lifetime (default: 1). |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Brevo SMTP for password reset emails. |
+
 ---
 
 ## Glossary
@@ -138,11 +181,15 @@ npm run test
 | **PAYE** | Pay-As-You-Earn — Malawi's progressive monthly income tax. |
 | **Pension EE / ER** | Employee / Employer pension contribution (5% / 10% respectively, capped at MWK 1,000,000 pensionable income). |
 | **TEVET** | Technical, Entrepreneurial and Vocational Education and Training levy (1% of gross). |
+| **FBT** | Fringe Benefits Tax — employer-paid tax on non-cash benefits (default 30% in Malawi). |
 | **Pay Period** | A `YYYY-MM` string (e.g. `2026-08`) representing the month for which payroll is being run. |
 | **Statutory Config** | The full set of rates, bands, and thresholds used to compute payroll, loaded from `Settings`. |
 | **Config Snapshot** | A JSON copy of the Statutory Config frozen at payroll-run time and stored on the `PayrollRecord`. |
+| **FBT Snapshot** | A JSON copy of the per-benefit FBT breakdown frozen at payroll-run time and stored on the `PayrollRecord`. |
 | **Effective From** | The date a `Settings` row becomes the source of truth for its key. |
 | **Soft Delete** | Marking an `Employee.isActive = false` rather than removing the row, so historical payrolls stay intact. |
+| **Business** | A tenant. Each business has its own employees, payroll records, settings, and audit logs. |
+| **SUPER_ADMIN** | Platform-level administrator with no implicit business access; manages businesses and sees cross-business audit logs. |
 
 ---
 

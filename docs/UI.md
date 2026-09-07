@@ -214,9 +214,10 @@ password change clears the cookie and forces a re-login redirect
 **State (tenant):** per-tab `FieldDef[]` configuration + a per-tab local
 `formData` map. `effectiveFrom` defaults to today.
 
-**Save flow (tenant):** fires N parallel `POST /api/settings` requests — one
-per field. If the network blips mid-save, the settings end up
-half-updated. See IMPROVEMENTS for a batch endpoint.
+**Save flow (tenant):** fires a single `POST /api/settings/batch` request
+with all changed fields. The server writes them atomically via a single
+`INSERT ... ON CONFLICT DO UPDATE` statement. This prevents the half-saved
+state that occurred when N parallel requests were issued previously.
 
 **Local icon:** `XCircle` SVG. Replace with `lucide-react`.
 
@@ -321,6 +322,30 @@ auto-opens the admin drawer on the businesses page.
 **Backend:** `GET /api/admin/stats` (new) — `MANAGE_BUSINESSES`-gated;
 ADMIN gets 403.
 
+### 3.11 `/forgot-password` and `/reset-password` — `src/app/forgot-password/page.tsx`, `src/app/reset-password/[token]/page.tsx`
+
+**What they show:** the credential reset flow. `/forgot-password` has email
+plus an optional business name field (same disambiguation logic as login).
+On submit it POSTs to `/api/auth/forgot-password`; the server always
+returns a generic success message to prevent user enumeration.
+
+`/reset-password/[token]` reads the token from the route params, validates
+it server-side, and presents a new-password form with client-side strength
+checking (min 8 chars, uppercase, number). On success it POSTs to
+`/api/auth/reset-password` and redirects to `/login?reset=1`.
+
+### 3.12 `/users` — `src/app/users/page.tsx`
+
+**Who sees it:** ADMIN and SUPER_ADMIN (`MANAGE_USERS`).
+
+**What it shows:** A paginated table of users in the actor's business,
+with Add / Edit / Deactivate actions. The form validates email format,
+password strength, and role restrictions (`SUPER_ADMIN` cannot be created
+or assigned via this page).
+
+**Fetchers:** `GET /api/users`, `POST /api/users`, `PUT /api/users/[id]`,
+`DELETE /api/users/[id]`.
+
 ---
 
 ## 4. State Management Cheat-Sheet
@@ -339,7 +364,7 @@ ADMIN gets 403.
 
 | Pattern | Implementation |
 | --- | --- |
-| **Toast** | The settings page uses a small inline status pill at the top. Other pages use `alert()` — see IMPROVEMENTS to standardize on toasts. |
+| **Toast** | `useToast` hook (`src/hooks/useToast.tsx`) is used in settings, payroll, employees, reports, businesses, and users pages. Renders a colored pill with icon that auto-dismisses after 4 seconds. |
 | **Confirm dialog** | A custom modal with cancel/confirm buttons. Used for delete. |
 | **Loading spinner** | `Loader2` from `lucide-react` with `animate-spin`. |
 | **Empty state** | Centered icon + message in most lists. |
@@ -348,7 +373,30 @@ ADMIN gets 403.
 
 ---
 
-## 6. Accessibility Notes
+### `src/components/UserContext.tsx`
+
+Provides the current user to the entire app via React Context.
+
+- **`UserProvider`** — wraps the app in `layout.tsx`. Accepts an optional
+  `initialUser` prop for server-side hydration; otherwise fetches
+  `/api/auth/me` on mount.
+- **`useCurrentUser()`** — returns `CurrentUser | null | undefined`
+  (tri-state: loading / unauthenticated / authenticated).
+- Used by `MainNav` for role-aware nav and by pages for conditional
+  rendering.
+
+### `src/components/PeriodPicker.tsx`
+
+Shared period selector used by dashboard, payroll, reports, and payslips.
+
+- Fetches distinct periods from `/api/dashboard` (no-period mode) on mount.
+- Renders a `<select>` dropdown and a native `<input type="month">` in
+  parallel; both drive the same `onChange`.
+- Accepts `value`, `onChange`, `disabled`, `label`, and `id` props.
+
+---
+
+## 7. Accessibility Notes
 
 - `aria-label` on the sidebar and bottom nav.
 - `aria-current="page"` on the active nav link.
@@ -363,7 +411,7 @@ ADMIN gets 403.
 
 ---
 
-## 7. What Belongs Where (Rules of Thumb)
+## 8. What Belongs Where (Rules of Thumb)
 
 - **A page is for routing and layout.** It does *not* contain
   business logic. Tax math, validation, or aggregation must live

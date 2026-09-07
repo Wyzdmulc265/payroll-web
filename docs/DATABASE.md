@@ -95,11 +95,12 @@ The master record. **Soft-deletable** (`isActive`). All historical
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `id` | `String @id` | `cuid()` | Internal primary key. |
-| `employeeId` | `String @unique` | — | The employee id, regex `^EMP\d{3}$` enforced by Zod. It remains globally unique for now. |
+| `employeeId` | `String` | — | The employee id, regex `^EMP\d{3}$` enforced by Zod. Unique **per business** via `@@unique([employeeId, businessId])`. |
 | `businessId` | `String?` FK→Business | — | Tenant ownership; nullable while legacy data is being migrated. |
 | `firstName`, `lastName` | `String` | — | |
 | `fullName` | `String?` | — | Denormalised `<first> <last>`; recomputed in API on name change. |
-| `nationalId` | `String? @unique` | — | Malawi National ID, optional but unique when present. |
+| `nationalId` | `String?` | — | Malawi National ID, optional. Encrypted at rest via AES-256-GCM. Duplicate detection uses `nationalIdHash` (SHA-256) per business. |
+| `nationalIdHash` | `String?` | — | SHA-256 hash of `nationalId` for per-business duplicate detection. Populated by the API layer on create/update. |
 | `employmentStatus` | `String` | `"Active"` | Loose string (`Active` / `Inactive`); the soft-delete target. |
 | `department` | `String` | — | Indexed. **Currently the Add-Employee modal hard-codes 5 values**; see IMPROVEMENTS. |
 | `position` | `String` | — | |
@@ -124,7 +125,7 @@ The master record. **Soft-deletable** (`isActive`). All historical
 - `payrollRecords PayrollRecord[]` — `onDelete: Cascade` on the child.
 - `auditLogs AuditLog[]` — `onDelete: SetNull` on the child.
 
-**Indexes**: `department`, `employmentStatus`, `isActive`.
+**Indexes**: `department`, `employmentStatus`, `isActive`, `(businessId, isActive)`, `nationalIdHash`.
 
 ---
 
@@ -158,7 +159,9 @@ period.
 **Constraints**: `@@unique([payrollPeriod, employeeId])` — prevents
 double-paying an employee for the same period.
 
-**Indexes**: `payrollPeriod`, `employeeId`.
+**Indexes**: `payrollPeriod`, `employeeId`, `businessId`, `runByUserId`,
+`(businessId, payrollPeriod)`, `(businessId, employeeId)`,
+`(businessId, department)`.
 
 ---
 
@@ -259,7 +262,7 @@ statutory.overtime_off_day_rate_multiplier
 
 ---
 
-## 6. ER Diagram
+## 7. ER Diagram
 
 ```diagram
 ┌────────────────┐ 1     *  ┌────────────────┐
@@ -299,7 +302,7 @@ statutory.overtime_off_day_rate_multiplier
 
 ---
 
-## 7. Migrations
+## 8. Migrations
 
 Under `prisma/migrations/`:
 
@@ -313,6 +316,7 @@ Under `prisma/migrations/`:
 | `20260902144109_add_auth_and_business_models` | Adds `Business`, `User`, `Session`, `PasswordReset` models; drops legacy `audit_logs.user` and `payroll_records.run_by`; adds `business_id` to employees, payroll, settings. |
 | `20260902144200_add_rate_limit_table` | Adds `RateLimit` model for per-key login brute-force protection. |
 | `20260903235900_scoped_user_email_per_business` | Scopes `User` email uniqueness per business: drops `users_email_key`, adds `users_email_business_id_key (email, business_id)` plus partial `users_email_no_business_key (email) WHERE business_id IS NULL` for SUPER_ADMIN. |
+| `20260905200153_phase1_security_indexes_and_nationalid` | Drops old `employees_national_id_key` unique index; adds `national_id_hash` column; creates composite indexes on `PayrollRecord` (`business_id, payroll_period`, `business_id, employee_id`, `business_id, department`) and `Employee` (`business_id, is_active`, `national_id_hash`). |
 
 **Apply in prod**: `npm run prisma:deploy`.
 
@@ -374,5 +378,11 @@ Under `prisma/migrations/`:
   migrations cheap (adding a new department is a row, not a
   migration) but loses some compile-time safety. See IMPROVEMENTS.
 - **`@@index` for hot filters** — `department`, `employmentStatus`,
-  `isActive` on `Employee`; `payrollPeriod` and `employeeId` on
-  `PayrollRecord`.
+  `isActive`, `(businessId, isActive)` on `Employee`; `payrollPeriod`,
+  `employeeId`, `businessId`, `runByUserId`, `(businessId, payrollPeriod)`,
+  `(businessId, employeeId)`, `(businessId, department)` on `PayrollRecord`.
+- **`nationalIdHash` for PII-safe uniqueness** — `nationalId` is encrypted
+  and cannot be indexed; a SHA-256 hash enables per-business duplicate
+  detection without exposing the raw value.
+- **`__Host-` cookie prefix** — the session cookie name is
+  `__Host-payroll_session`, requiring `Secure`, `Path=/`, and no `Domain`.

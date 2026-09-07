@@ -9,6 +9,7 @@ import {
 import { calculatePayroll, formatCurrency, PayrollInput, buildStatutoryConfigFromSettings, StatutoryConfig, getWorkingDaysInMonth, selectEffectiveSettings } from '@/lib/payroll-engine';
 import { FringeBenefitType, BenefitPaymentMethod, FringeBenefitInput, calculateBenefitValue } from '@/lib/fbt-engine';
 import { useToast } from '@/hooks/useToast';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { PeriodPicker } from '@/components/PeriodPicker';
 
 interface Employee {
@@ -87,6 +88,9 @@ export default function PayrollPage() {
   const [scrollX, setScrollX] = useState(0);
   const rafRef = useRef<number | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const benefitModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(benefitModalOpen, benefitModalRef);
 
   const currentYear = new Date().getFullYear();
   const suggestedPeriod = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
@@ -559,7 +563,7 @@ export default function PayrollPage() {
 
         {/* Payroll Register */}
         <div className="card">
-          <div className="overflow-x-auto" ref={tableContainerRef} id="payroll-table-container">
+          <div className="overflow-x-auto" ref={tableContainerRef} id="payroll-table-container" role="region" aria-label="Payroll register table">
             <table className="table min-w-[1400px]">
                 <thead className="sticky top-0 bg-gray-50">
                   <tr>
@@ -792,7 +796,7 @@ export default function PayrollPage() {
 
         {/* Fringe Benefit Modal */}
         {benefitModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div ref={benefitModalRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-label="Add Fringe Benefit" onKeyDown={(e) => { if (e.key === 'Escape') setBenefitModalOpen(false); }}>
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <h3 className="text-lg font-semibold mb-4">Add Fringe Benefit</h3>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -14,6 +14,7 @@ import { DEPARTMENTS_SETTING_KEY, MAX_DEPARTMENTS, MAX_DEPARTMENT_LENGTH, parseD
 import { FbtRuleType, FbtClassification, FringeBenefitType } from '@/lib/fbt-engine';
 import { useToast } from '@/hooks/useToast';
 import { useCurrentUser } from '@/components/UserContext';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface Setting {
   id: string;
@@ -297,6 +298,9 @@ export default function SettingsPage() {
   const [otherStatutoryForm, setOtherStatutoryForm] = useState<Record<string, string>>({});
   const [systemForm, setSystemForm] = useState<Record<string, string>>({});
   const [bands, setBands] = useState<BandRow[]>([]);
+
+  const advancedModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(showAdvancedModal, advancedModalRef);
 
   const settingsMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -1292,6 +1296,7 @@ export default function SettingsPage() {
           onKeyDown={(e) => { if (e.key === 'Escape') setShowAdvancedModal(false); }}
         >
           <div
+            ref={advancedModalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="settingModalTitle"

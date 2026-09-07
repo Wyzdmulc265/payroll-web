@@ -1,9 +1,10 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Plus, Edit, Trash2, Building2, ShieldCheck, XCircle, ChevronLeft } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface BusinessDto {
   id: string;
@@ -74,6 +75,15 @@ function BusinessesPageInner() {
   const [adminForm, setAdminForm] = useState(emptyAdminForm);
   const [adminFormErrors, setAdminFormErrors] = useState<Record<string, string>>({});
   const [adminSubmitting, setAdminSubmitting] = useState(false);
+
+  // Focus traps for modals — declared after the state they observe so the
+  // hook order is stable across renders.
+  const createRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(showCreate, createRef);
+  const editRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(!!editing, editRef);
+  const adminRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(showAdminModal && !!drawerBusiness, adminRef);
 
   const fetchBusinesses = useCallback(async () => {
     setLoading(true);
@@ -474,7 +484,7 @@ function BusinessesPageInner() {
       </div>
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="Create business">
+        <div ref={createRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="Create business" onKeyDown={(e) => { if (e.key === 'Escape') setShowCreate(false); }}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">New Business</h2>
             <form onSubmit={handleCreate} className="space-y-3">
@@ -513,7 +523,7 @@ function BusinessesPageInner() {
       )}
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label={`Edit ${editing.name}`}>
+        <div ref={editRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label={`Edit ${editing.name}`} onKeyDown={(e) => { if (e.key === 'Escape') setEditing(null); }}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Edit Business</h2>
             <form onSubmit={handleSaveEdit} className="space-y-3">
@@ -531,11 +541,16 @@ function BusinessesPageInner() {
                 </select>
               </div>
               {editError && <p className="text-sm text-red-600">{editError}</p>}
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-                <button type="submit" className="btn-primary" disabled={saving}>
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : 'Save'}
+              <div className="flex justify-between gap-2 pt-2">
+                <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Back
                 </button>
+                <div className="flex gap-2">
+                  <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
+                  <button type="submit" className="btn-primary" disabled={saving}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : 'Save'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -554,8 +569,8 @@ function BusinessesPageInner() {
                 <button
                   type="button"
                   onClick={closeDrawer}
-                  className="btn-icon md:hidden"
-                  aria-label="Close"
+                  className="btn-icon"
+                  aria-label="Close drawer"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -633,7 +648,7 @@ function BusinessesPageInner() {
       )}
 
       {showAdminModal && drawerBusiness && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label={editingAdmin ? `Edit ${editingAdmin.email}` : 'Add Admin'}>
+        <div ref={adminRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label={editingAdmin ? `Edit ${editingAdmin.email}` : 'Add Admin'} onKeyDown={(e) => { if (e.key === 'Escape') { setShowAdminModal(false); setEditingAdmin(null); } }}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               {editingAdmin ? `Edit ${editingAdmin.email}` : 'Add Admin'}
