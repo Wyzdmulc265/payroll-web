@@ -22,7 +22,18 @@ const AUTH_TAG_LENGTH = 16;
 
 function getKey(): Buffer | null {
   const hex = process.env.ENCRYPTION_KEY;
-  if (!hex) return null;
+  if (!hex) {
+    // Fail-fast in production: storing PII (national ID, bank account, tax
+    // number) in plaintext is a silent regulatory breach. Dev keeps the
+    // pass-through behaviour so a fresh local DB is frictionless.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'ENCRYPTION_KEY is not set. Refusing to store employee PII in plaintext in production. ' +
+        'Generate a 64-character hex key with `openssl rand -hex 32` and set ENCRYPTION_KEY.'
+      );
+    }
+    return null;
+  }
   const buf = Buffer.from(hex, 'hex');
   if (buf.length !== 32) {
     throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
@@ -70,8 +81,6 @@ export function decrypt(ciphertext: string | null): string | null {
 
 /** Fields on the Employee model that contain PII and must be encrypted. */
 export const PII_FIELDS = ['nationalId', 'accountNumber', 'taxNumber'] as const;
-
-type PiiKey = (typeof PII_FIELDS)[number];
 
 /**
  * Encrypt all PII fields present in a record (for storage).

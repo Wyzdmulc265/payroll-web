@@ -37,12 +37,15 @@ function isPublicPath(pathname: string): boolean {
 }
 
 function isSameOrigin(request: NextRequest): boolean {
-  const host = request.nextUrl.host;
+  // Compare normalized origins (scheme + host + port), not just host. A
+  // host-only comparison would treat `http://site` and `https://site` (or
+  // different ports) as the same origin, which an attacker abusing a
+  // scheme downgrade or an attached port can exploit.
+  const expected = request.nextUrl.origin;
   const origin = request.headers.get('origin');
   if (origin) {
     try {
-      const originUrl = new URL(origin);
-      return originUrl.host === host;
+      return new URL(origin).origin === expected;
     } catch {
       return false;
     }
@@ -50,8 +53,7 @@ function isSameOrigin(request: NextRequest): boolean {
   const referer = request.headers.get('referer');
   if (referer) {
     try {
-      const refererUrl = new URL(referer);
-      return refererUrl.host === host;
+      return new URL(referer).origin === expected;
     } catch {
       return false;
     }

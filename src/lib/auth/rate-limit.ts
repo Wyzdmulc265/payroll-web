@@ -8,6 +8,11 @@ const WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 15 * 60 * 1000);
 export async function checkRateLimit(key: string, maxAttempts = MAX_ATTEMPTS, windowMs = WINDOW_MS): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
   const now = new Date();
 
+  // Cheap, probabilistic housekeeping so expired rows cannot grow without bound.
+  if (Math.random() < 0.05) {
+    await pruneExpiredRateLimits();
+  }
+
   let current = await prisma.rateLimit.findUnique({ where: { key } });
 
   if (!current || current.resetAt <= now) {
@@ -41,4 +46,12 @@ export async function clearLoginRateLimit(key: string): Promise<void> {
   } catch {
     // Ignore if not found
   }
+}
+
+/** Delete every rate-limit row whose window has elapsed. */
+export async function pruneExpiredRateLimits(): Promise<number> {
+  const cut = await prisma.rateLimit.deleteMany({
+    where: { resetAt: { lte: new Date() } },
+  });
+  return cut.count;
 }

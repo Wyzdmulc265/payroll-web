@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
-import { buildStatutoryConfigFromSettings, validateTaxBands } from '@/lib/payroll-engine';
+import { buildStatutoryConfigFromSettings, selectEffectiveSettings, validateTaxBands } from '@/lib/payroll-engine';
 import { DEPARTMENTS_SETTING_KEY, validateDepartmentsValue } from '@/lib/departments';
 
 const settingSchema = z.object({
@@ -26,9 +26,20 @@ export async function GET(request: NextRequest) {
 
     const where = category ? { category, businessId: session.user.businessId } : { businessId: session.user.businessId };
 
-    const settings = await prisma.settings.findMany({
+    const all = await prisma.settings.findMany({
       where,
-      orderBy: [{ category: 'asc' }, { key: 'asc' }],
+      orderBy: [{ category: 'asc' }, { key: 'asc' }, { effectiveFrom: 'desc' }],
+    });
+
+    // Settings are now history-aware (multiple rows per key, keyed on
+    // effectiveFrom). Collapse to the single most recently-effective row per
+    // key so the client's key → value map (and payslip/report defaults) always
+    // sees the active value, never a stale or random one.
+    const seen = new Set<string>();
+    const settings = all.filter((row) => {
+      if (seen.has(row.key)) return false;
+      seen.add(row.key);
+      return true;
     });
 
     return NextResponse.json({ success: true, data: settings });
@@ -57,16 +68,22 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const existing = await prisma.settings.findUnique({ where: { key_businessId: { key, businessId } } });
-    if (!existing) {
+    const existing = await prisma.settings.findMany({
+      where: { key, businessId },
+      orderBy: { effectiveFrom: 'desc' },
+      take: 1,
+    });
+    if (existing.length === 0) {
       return NextResponse.json({ success: false, error: 'Setting not found' }, { status: 404 });
     }
+    const latest = existing[0];
+    // Delete every effective-dated row for this key (the whole history).
     await prisma.$transaction(async (tx) => {
-      await tx.settings.delete({ where: { key_businessId: { key, businessId } } });
+      await tx.settings.deleteMany({ where: { key, businessId } });
       await logAuditEvent({
-        action: 'SETTINGS_DELETED', entityType: 'Settings', entityId: existing.id,
+        action: 'SETTINGS_DELETED', entityType: 'Settings', entityId: latest.id,
         userId: session.user.id, businessId,
-        description: `Deleted setting ${key}`, previousData: existing,
+        description: `Deleted setting ${key}`, previousData: latest,
         ipAddress: getRequestIp(request),
       }, tx);
     });
@@ -99,8 +116,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (validatedData.category === 'STATUTORY') {
+      // Collapse settings history to the latest-effective value per key before
+      // validating the proposed change. Object.fromEntries is nondeterministic
+      // when multiple effective-dated rows share a key (they now can, after the
+      // history-aware uniqueness change).
       const allSettings = await prisma.settings.findMany({ where: { businessId } });
-      const settingsMap = Object.fromEntries(allSettings.map((s) => [s.key, s.value]));
+      const settingsMap = selectEffectiveSettings(
+        allSettings.map((s) => ({ key: s.key, value: s.value, effectiveFrom: s.effectiveFrom })),
+        new Date(),
+      );
       settingsMap[validatedData.key] = validatedData.value;
       // buildStatutoryConfigFromSettings throws on invalid bands — convert
       // to a 400 with the validation message instead of a 500.
@@ -119,22 +143,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const effectiveFrom = validatedData.effectiveFrom ? new Date(validatedData.effectiveFrom) : new Date();
+    // Multiple effective-dated rows per key are allowed, so the upsert targets
+    // the (key, businessId, effectiveFrom) tuple. Saving a new value with a new
+    // date inserts a fresh history row; re-saving the same value on the same
+    // date updates it in place.
+    const compound = { key: validatedData.key, businessId, effectiveFrom };
     const existing = await prisma.settings.findUnique({
-      where: { key_businessId: { key: validatedData.key, businessId } },
+      where: { key_businessId_effectiveFrom: compound },
     });
     const setting = await prisma.$transaction(async (tx) => {
       const updated = await tx.settings.upsert({
-        where: { key_businessId: { key: validatedData.key, businessId } },
+        where: { key_businessId_effectiveFrom: compound },
         update: {
           value: validatedData.value,
           description: validatedData.description,
           category: validatedData.category,
-          effectiveFrom: validatedData.effectiveFrom ? new Date(validatedData.effectiveFrom) : new Date(),
           business: { connect: { id: businessId } },
         },
         create: {
           ...validatedData,
-          effectiveFrom: validatedData.effectiveFrom ? new Date(validatedData.effectiveFrom) : new Date(),
+          effectiveFrom,
           business: { connect: { id: businessId } },
         },
       });

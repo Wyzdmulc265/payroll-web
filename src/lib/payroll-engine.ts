@@ -141,6 +141,16 @@ export const DEFAULT_STATUTORY_CONFIG: StatutoryConfig = {
       throw new Error(bandError);
     }
 
+    // Safety net: force the final band to be unbounded so every income
+    // resolves to a band. Existing settings rows (e.g. the seed's band 4
+    // `to` of 999999999) or a hand-configured finite top band would otherwise
+    // let a salary above that threshold fall through calculatePAYE and be
+    // taxed at 0 — a silent, hard-to-detect payroll error.
+    const finalBand = bands[bands.length - 1];
+    if (finalBand) {
+      finalBand.toAmount = Number.MAX_SAFE_INTEGER;
+    }
+
 return {
       taxBands: bands,
       pensionEEPercent: num('statutory.pension_ee_rate', base.pensionEEPercent),
@@ -189,7 +199,15 @@ export function calculatePAYE(grossIncome: number, config: StatutoryConfig = DEF
   
   // Find applicable tax band
   const band = config.taxBands.find(b => taxable >= b.fromAmount && taxable <= b.toAmount);
-  if (!band) return 0;
+  if (!band) {
+    // Fail loud instead of silently returning 0. A config whose bands do not
+    // cover the given income (e.g. a finite top band) must never yield a
+    // zero PAYE by accident — it is a statutory-calculation error.
+    throw new Error(
+      `Income ${taxable} falls outside the configured PAYE tax bands; no band matched. ` +
+      'Ensure the final tax band is unbounded.'
+    );
+  }
   
   if (band.ratePercent === 0) return 0;
   
@@ -556,20 +574,38 @@ export function getWorkingDaysInMonth(year: number, month: number): number {
 }
 
 export function selectEffectiveSettings(rows: SettingRow[], asOf: Date): Record<string, string> {
-  const result: Record<string, string> = {};
+  // Group rows by key so we can resolve the single row effective at `asOf`.
+  const byKey: Record<string, SettingRow[]> = {};
   for (const row of rows) {
-    const effectiveFrom = row.effectiveFrom instanceof Date ? row.effectiveFrom : row.effectiveFrom ? new Date(row.effectiveFrom) : null;
-    if (effectiveFrom === null || effectiveFrom <= asOf) {
-      result[row.key] = row.value;
-    }
+    (byKey[row.key] ??= []).push(row);
+  }
+
+  const result: Record<string, string> = {};
+  for (const [key, entries] of Object.entries(byKey)) {
+    const selected = selectHighestEffective(entries, asOf);
+    if (selected) result[key] = selected.value;
   }
   return result;
 }
 
-
-
-
-
-
-
-
+/** Resolve the single SettingRow effective at (or before) `asOf`. Rows with a
+ *  missing/null effectiveFrom behave like "always effective" (epoch 0) so
+ *  pre-history rows keep working. Assumes `rows` already share a key. */
+function selectHighestEffective(rows: SettingRow[], asOf: Date): SettingRow | null {
+  let latest: SettingRow | null = null;
+  let latestTime: Date | null = null;
+  for (const r of rows) {
+    const eff =
+      r.effectiveFrom instanceof Date
+        ? r.effectiveFrom
+        : r.effectiveFrom
+          ? new Date(r.effectiveFrom)
+          : new Date(0);
+    if (eff > asOf) continue; // not yet in force for this period
+    if (latest === null || eff > latestTime!) {
+      latest = r;
+      latestTime = eff;
+    }
+  }
+  return latest;
+}

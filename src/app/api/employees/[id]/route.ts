@@ -125,7 +125,17 @@ export async function PUT(
     }
 
     if (validatedData.nationalId) {
+      // NIN provided: re-derive the dedup hash from the new plaintext.
       (updateData as Record<string, unknown>).nationalIdHash = hashNationalId(validatedData.nationalId);
+    } else if (existing.nationalId) {
+      // NIN *not* part of this partial update: keep the dedup index in sync
+      // with the value already on the row instead of nulling it out. The
+      // stored value is ciphertext, so decrypt the single field before
+      // hashing (encrypt()/decrypt() are transparent pass-throughs when no
+      // ENCRYPTION_KEY is set).
+      const existingPlain = decryptPii({ nationalId: existing.nationalId }).nationalId;
+      (updateData as Record<string, unknown>).nationalIdHash =
+        existingPlain ? hashNationalId(existingPlain) : null;
     } else {
       (updateData as Record<string, unknown>).nationalIdHash = null;
     }

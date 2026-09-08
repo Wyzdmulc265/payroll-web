@@ -5,12 +5,31 @@ import prisma from '@/lib/prisma';
 import { forgotPasswordSchema } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
 import { sendPasswordResetEmail, redactSmtpError } from '@/lib/mail';
+import { checkRateLimit } from '@/lib/auth/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email, businessName } = forgotPasswordSchema.parse(body);
     const attemptedBusiness = businessName?.trim() || undefined;
+
+    // Throttle reset requests: per-email stops an attacker email-bombing a
+    // single victim; per-IP stops spraying many accounts. The generic response
+    // body keeps the no-enumeration guarantee intact.
+    const ipAddress = getRequestIp(request) ?? 'unknown';
+    for (const key of [`forgot:${email.toLowerCase()}`, `forgot:${ipAddress}`]) {
+      const limit = await checkRateLimit(key, 5, 60 * 60 * 1000);
+      if (!limit.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Too many reset requests. Try again later.',
+            retryAfterSeconds: limit.retryAfterSeconds,
+          },
+          { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+        );
+      }
+    }
 
     // Email is unique per business, so one address may map to several
     // accounts. Resolve the target set: an explicit business name selects
@@ -42,6 +61,12 @@ export async function POST(request: NextRequest) {
     }
 
     for (const user of targets) {
+      // Bound row growth: drop this user's already-expired one-time tokens
+      // before minting another.
+      await prisma.passwordReset.deleteMany({
+        where: { userId: user.id, expiresAt: { lte: new Date() } },
+      });
+
       const token = randomBytes(32).toString('hex');
       await prisma.$transaction(async (tx) => {
         await tx.passwordReset.create({

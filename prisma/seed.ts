@@ -105,7 +105,7 @@ async function main() {
     { key: 'statutory.paye_band_3_to', value: '10000000', description: 'Band 3 to amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
     { key: 'statutory.paye_band_3_rate', value: '35', description: 'Band 3 rate %', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
     { key: 'statutory.paye_band_4_from', value: '10000001', description: 'Band 4 from amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
-    { key: 'statutory.paye_band_4_to', value: '999999999', description: 'Band 4 to amount', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
+    { key: 'statutory.paye_band_4_to', value: '9007199254740991', description: 'Band 4 to amount (unbounded = Number.MAX_SAFE_INTEGER)', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
     { key: 'statutory.paye_band_4_rate', value: '40', description: 'Band 4 rate %', category: 'STATUTORY', effectiveFrom: new Date('2026-01-01') },
 
     // Pension Configuration
@@ -131,7 +131,13 @@ async function main() {
 
   for (const setting of settings) {
     await prisma.settings.upsert({
-      where: { key_businessId: { key: setting.key, businessId: business.id } },
+      where: {
+        key_businessId_effectiveFrom: {
+          key: setting.key,
+          businessId: business.id,
+          effectiveFrom: setting.effectiveFrom,
+        },
+      },
       update: { ...setting, businessId: business.id },
       create: { ...setting, businessId: business.id },
     });

@@ -253,7 +253,11 @@ model Settings {
   businessId    String?   @map("business_id")
   business      Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
-  @@unique([key, businessId])
+  // History-aware uniqueness: the same key (e.g. `statutory.pension_ee_rate`)
+  // may hold many effective-dated values. The engine resolves the row with the
+  // greatest `effectiveFrom <= period end`, which is what makes historical
+  // pay periods reproduce their original numbers after a rate change.
+  @@unique([key, businessId, effectiveFrom])
   @@index([category])
   @@index([businessId])
   @@map("settings")

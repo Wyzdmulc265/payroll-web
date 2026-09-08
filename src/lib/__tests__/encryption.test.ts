@@ -43,13 +43,40 @@ describe('encryption module', () => {
   });
 
   describe('pass-through without key', () => {
-    beforeEach(() => clearEncryptionKey());
-    afterEach(() => clearEncryptionKey());
+  beforeEach(() => clearEncryptionKey());
+  afterEach(() => clearEncryptionKey());
 
-    it('returns plaintext as-is when ENCRYPTION_KEY is not set', () => {
-      const val = '12345-67890';
-      expect(encrypt(val)).toBe(val);
-      expect(decrypt(val)).toBe(val);
+  it('returns plaintext as-is when ENCRYPTION_KEY is not set', () => {
+    const val = '12345-67890';
+    expect(encrypt(val)).toBe(val);
+    expect(decrypt(val)).toBe(val);
+  });
+  });
+
+  describe('production fail-fast', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    });
+
+    it('throws when ENCRYPTION_KEY is missing in production', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('ENCRYPTION_KEY', '');
+      expect(() => encrypt('secret')).toThrow(/ENCRYPTION_KEY is not set/);
+      expect(() => decrypt('secret')).toThrow(/ENCRYPTION_KEY is not set/);
+    });
+
+    it('allows pass-through when ENCRYPTION_KEY is missing in development', () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      vi.stubEnv('ENCRYPTION_KEY', '');
+      expect(encrypt('secret')).toBe('secret');
+      expect(decrypt('secret')).toBe('secret');
+    });
+
+    it('throws when ENCRYPTION_KEY is the wrong length (31 bytes hex)', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('ENCRYPTION_KEY', 'a'.repeat(62)); // 31 bytes, not 32
+      expect(() => encrypt('secret')).toThrow(/64-character hex/);
     });
   });
 

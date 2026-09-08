@@ -15,20 +15,25 @@ const GENERIC_FAILURE = 'Invalid email or password';
 
 export async function POST(request: NextRequest) {
   const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const key = ipAddress;
-  const limit = await checkLoginRateLimit(key);
-
-  if (!limit.allowed) {
-    return NextResponse.json(
-      { success: false, error: 'Too many login attempts', retryAfterSeconds: limit.retryAfterSeconds },
-      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
-    );
-  }
 
    try {
       const body = await request.json();
       const { email, password, businessName } = loginSchema.parse(body);
       const attemptedBusiness = businessName?.trim() || undefined;
+
+      // Key the limiter on IP + normalised email: the email dimension stops an
+      // attacker who rotates spoofed X-Forwarded-For values from hammering a
+      // single victim account, while the IP dimension still throttles one
+      // client spraying many different emails.
+      const key = `login:${ipAddress}|${email.toLowerCase()}`;
+      const limit = await checkLoginRateLimit(key);
+
+      if (!limit.allowed) {
+        return NextResponse.json(
+          { success: false, error: 'Too many login attempts', retryAfterSeconds: limit.retryAfterSeconds },
+          { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+        );
+      }
 
       // Email is unique per business (User @@unique([email, businessId])), so
       // one email may resolve to several accounts. Load all of them and

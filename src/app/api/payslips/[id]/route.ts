@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { formatCurrency } from '@/lib/payroll-engine';
+import { formatCurrency, selectEffectiveSettings } from '@/lib/payroll-engine';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { decryptPii } from '@/lib/encryption';
 
@@ -49,7 +49,11 @@ export async function GET(
     const settings = await prisma.settings.findMany({
       where: { category: 'COMPANY', businessId: session.user.businessId },
     });
-    const settingsMap = Object.fromEntries(settings.map(s => [s.key, s.value]));
+    // COMPANY settings are history-aware: take the value effective *now*.
+    const settingsMap = selectEffectiveSettings(
+      settings.map((s) => ({ key: s.key, value: s.value, effectiveFrom: s.effectiveFrom })),
+      new Date(),
+    );
 
     const employee = decryptPii(payrollRecord.employee);
 

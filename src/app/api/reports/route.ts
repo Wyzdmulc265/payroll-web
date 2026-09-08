@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma, { Prisma } from '@/lib/prisma';
-import { formatCurrency, buildStatutoryConfigFromSettings } from '@/lib/payroll-engine';
+import { formatCurrency, buildStatutoryConfigFromSettings, selectEffectiveSettings } from '@/lib/payroll-engine';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { logAuditEvent, getRequestIp } from '@/lib/audit';
 import { decryptPii } from '@/lib/encryption';
@@ -26,7 +26,11 @@ export async function GET(request: NextRequest) {
 
     // Load statutory config from Settings (falls back to defaults).
     const configSettings = await prisma.settings.findMany({ where: { businessId: session.user.businessId } });
-    const configMap = Object.fromEntries(configSettings.map((s) => [s.key, s.value]));
+    // Resolve the value effective *now* (settings are history-aware).
+    const configMap = selectEffectiveSettings(
+      configSettings.map((s) => ({ key: s.key, value: s.value, effectiveFrom: s.effectiveFrom })),
+      new Date(),
+    );
     const config = buildStatutoryConfigFromSettings(configMap);
 
     const where: Prisma.PayrollRecordWhereInput = { payrollPeriod: period, businessId: session.user.businessId };

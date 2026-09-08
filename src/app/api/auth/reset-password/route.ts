@@ -4,9 +4,26 @@ import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import { hashPassword, invalidateAllSessionsForUser, resetPasswordSchema } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
+import { checkRateLimit } from '@/lib/auth/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    // Throttle reset-token redemption per IP to slow down token-guessing
+    // (64 random hex chars are infeasible to brute-force; this is defence in
+    // depth) and to blunt scripted abuse of a leaked token.
+    const ipAddress = getRequestIp(request) ?? 'unknown';
+    const limit = await checkRateLimit(`reset:${ipAddress}`, 10, 15 * 60 * 1000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Too many reset attempts. Try again later.',
+          retryAfterSeconds: limit.retryAfterSeconds,
+        },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+      );
+    }
+
     const body = await request.json();
     const { token, newPassword } = resetPasswordSchema.parse({
       token: body.token,

@@ -3,7 +3,7 @@ import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
-import { buildStatutoryConfigFromSettings, validateTaxBands } from '@/lib/payroll-engine';
+import { buildStatutoryConfigFromSettings, selectEffectiveSettings, validateTaxBands } from '@/lib/payroll-engine';
 import { DEPARTMENTS_SETTING_KEY, validateDepartmentsValue } from '@/lib/departments';
 
 const settingSchema = z.object({
@@ -39,7 +39,14 @@ export async function POST(request: NextRequest) {
     const hasStatutory = validatedData.some((row) => row.category === 'STATUTORY');
     if (hasStatutory) {
       const allSettings = await prisma.settings.findMany({ where: { businessId } });
-      const settingsMap = Object.fromEntries(allSettings.map((s) => [s.key, s.value]));
+      // Collapse settings history to the latest-effective value per key before
+      // validating the batch. Object.fromEntries is nondeterministic when
+      // multiple effective-dated rows share a key (they now can, after the
+      // history-aware uniqueness change).
+      const settingsMap = selectEffectiveSettings(
+        allSettings.map((s) => ({ key: s.key, value: s.value, effectiveFrom: s.effectiveFrom })),
+        new Date(),
+      );
       for (const row of validatedData) {
         settingsMap[row.key] = row.value;
       }
@@ -67,7 +74,7 @@ export async function POST(request: NextRequest) {
     // STATUTORY / SYSTEM tabs. A single INSERT ... ON CONFLICT is one
     // round-trip, implicitly atomic, and has no interactive-transaction
     // timeout to expire. businessId is guaranteed non-null above, so the
-    // (key, business_id) conflict target always applies.
+    // (key, business_id, effective_from) conflict target always applies.
     await prisma.$executeRaw`
       INSERT INTO "settings" ("id", "key", "value", "description", "category", "effective_from", "business_id")
       VALUES ${Prisma.join(
@@ -75,14 +82,22 @@ export async function POST(request: NextRequest) {
           Prisma.sql`(gen_random_uuid(), ${row.key}, ${row.value}, ${row.description ?? null}, ${row.category}, ${row.effectiveFrom ? new Date(row.effectiveFrom) : new Date()}, ${businessId})`,
         ),
       )}
-      ON CONFLICT ("key", "business_id") DO UPDATE SET
+      ON CONFLICT ("key", "business_id", "effective_from") DO UPDATE SET
         "value" = EXCLUDED."value",
         "description" = EXCLUDED."description",
-        "category" = EXCLUDED."category",
-        "effective_from" = EXCLUDED."effective_from"
+        "category" = EXCLUDED."category"
     `;
-    const results = await prisma.settings.findMany({
+    // Re-read and collapse to the latest-effective row per key (settings are
+    // history-aware; the page expects one active value per key).
+    const rawResults = await prisma.settings.findMany({
       where: { businessId, key: { in: validatedData.map((row) => row.key) } },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    const seen = new Set<string>();
+    const results = rawResults.filter((row) => {
+      if (seen.has(row.key)) return false;
+      seen.add(row.key);
+      return true;
     });
 
     await logAuditEvent({

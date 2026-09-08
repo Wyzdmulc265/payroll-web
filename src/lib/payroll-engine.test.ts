@@ -13,6 +13,7 @@ import {
   buildStatutoryConfigFromSettings,
   DEFAULT_STATUTORY_CONFIG,
   selectEffectiveSettings,
+  StatutoryConfig,
 } from './payroll-engine';
 import { FringeBenefitType } from './fbt-engine';
 
@@ -264,6 +265,33 @@ describe('buildStatutoryConfigFromSettings', () => {
 
      // Band 2 now spans 150001–250000 at 15% → PAYE(200000) = 15% of 49,999 ≈ 7500
      expect(calculatePAYE(200000, cfg)).toBe(7500);
+   });
+it('normalizes a finite top band to unbounded so no income is silently untaxed', () => {
+     // Simulates the legacy seed / DB rows where band 4 `to` was a finite
+     // 999999999. Regressions here used to return PAYE 0 above that ceiling.
+     const cfg = buildStatutoryConfigFromSettings({
+       'statutory.paye_band_4_to': '999999999',
+     });
+
+     const topBand = cfg.taxBands[cfg.taxBands.length - 1];
+     expect(topBand.toAmount).toBe(Number.MAX_SAFE_INTEGER);
+
+     // A salary above the legacy ceiling must tax at the top 40% rate, not 0.
+     expect(calculatePAYE(1000000000, cfg)).toBeGreaterThan(0);
+   });
+
+   it('calculatePAYE throws when a hand-built config matches no band', () => {
+     // Defense in depth: only configs built outside buildStatutoryConfigFromSettings
+     // (e.g. a manually assembled StatutoryConfig with a finite top band) can reach
+     // this path — and it must fail loudly rather than yield a bogus 0.
+     const finiteConfig: StatutoryConfig = {
+       ...DEFAULT_STATUTORY_CONFIG,
+       taxBands: [
+         { band: 1, fromAmount: 0, toAmount: 100000, ratePercent: 0, fixedAmount: 0, cumulativeTax: 0 },
+       ],
+     };
+
+     expect(() => calculatePAYE(200000, finiteConfig)).toThrow(/no band matched/i);
    });
  });
 
