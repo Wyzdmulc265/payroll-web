@@ -13,6 +13,7 @@ import {
   LogOut,
   UserCog,
   ScrollText,
+  Upload,
 } from 'lucide-react';
 import { useCurrentUser } from './UserContext';
 import { Permission, hasPermission } from '@/lib/auth/permissions';
@@ -27,6 +28,7 @@ const ALL_NAV: {
 }[] = [
   { name: 'Dashboard', href: '/dashboard', icon: TrendingUp, permission: Permission.READ_PAYROLL },
   { name: 'Employees', href: '/employees', icon: Users, permission: Permission.READ_EMPLOYEES },
+  { name: 'Import Employees', href: '/employees/import', icon: Upload, permission: Permission.MANAGE_EMPLOYEES, requiresBusiness: true },
   { name: 'Payroll', href: '/payroll', icon: Calculator, permission: Permission.READ_PAYROLL },
   { name: 'Payslips', href: '/payslips', icon: FileText, permission: Permission.READ_PAYROLL },
   { name: 'Reports', href: '/reports', icon: BarChart3, permission: Permission.READ_REPORTS },

@@ -236,6 +236,68 @@ and `oldValue` / `newValue` JSON snapshots.
 **Soft delete only.** Flips `isActive = false` and `employmentStatus = 'Inactive'`.
 Historical `PayrollRecord`s are preserved.
 
+### `POST /api/employees/import`
+
+Batch-create employees from a JSON array of rows. Requires `MANAGE_EMPLOYEES`.
+
+**Body** (Zod-validated array):
+
+```json
+{
+  "rows": [
+    {
+      "employeeId": "EMP001",
+      "firstName": "Jane",
+      "lastName": "Banda",
+      "nationalId": "optional",
+      "department": "Finance",
+      "position": "Accountant",
+      "employmentDate": "2024-01-15",
+      "employmentType": "Permanent",
+      "basicSalary": 1500000,
+      "salaryFrequency": "Monthly",
+      "allowances": 200000,
+      "bankName": "National Bank",
+      "accountNumber": "123456789",
+      "paymentMethod": "Bank Transfer",
+      "pensionApplicable": true,
+      "taxStatus": "Taxable",
+      "taxNumber": "TPIN001",
+      "notes": "Optional notes"
+    }
+  ]
+}
+```
+
+**Validation per row** (same as `POST /api/employees`):
+- `employeeId` must match `^EMP\d{3}$`.
+- Duplicate `employeeId` within the same business → row skipped with error.
+- Duplicate `nationalId` within the same business → row skipped with error.
+- All Zod constraints from `employeeSchema` apply.
+
+**Behaviour:**
+- All valid rows are created in a single `prisma.$transaction`.
+- A single `AuditLog` row (`action: 'EMPLOYEES_IMPORTED'`) is written with the count and IDs of created employees.
+- The response distinguishes imported vs failed rows.
+
+**Response `200`**:
+
+```json
+{
+  "success": true,
+  "data": {
+    "imported": 3,
+    "failed": [
+      { "rowIndex": 2, "employeeId": "EMP002", "error": "Employee ID already exists" }
+    ]
+  }
+}
+```
+
+**Response `400`**:
+- `At least one row is required` when the array is empty.
+- `Validation error` with per-field `details` when the outer schema fails.
+
 ---
 
 ## 2. Payroll

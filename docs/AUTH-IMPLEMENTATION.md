@@ -17,7 +17,7 @@ leak never exposes usable session tokens. Cookies are
 ## 2. Password hashing
 
 `bcryptjs` with a cost of 10 (`src/lib/auth/password.ts` — `hashPassword`,
-`verifyPassword`). Reset tokens are 32 random bytes (base64url); only the
+`verifyPassword`). Reset tokens are 32 random bytes (hex-encoded, 64 chars); only the
 SHA-256 hash is persisted in `PasswordReset` with a 1-hour expiry.
 
 ## 3. Data model (auth portion of `prisma/schema.prisma`)

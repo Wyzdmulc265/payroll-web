@@ -125,3 +125,104 @@ export async function sendPasswordResetEmail(to: string, token: string): Promise
     html,
   });
 }
+
+/** Metadata included in the password-changed notification email. */
+export type PasswordChangedMetadata = {
+  ipAddress?: string;
+  userAgent?: string;
+  appUrl?: string;
+};
+
+function renderPasswordChangedHtml(params: { appName: string; appUrl: string; ipAddress?: string; userAgent?: string }): string {
+  const { appName, appUrl, ipAddress, userAgent } = params;
+  const ipLine = ipAddress ? `<p style="margin:0 0 8px 0;font-size:13px;line-height:18px;color:#4b5563;">IP address: ${escapeHtml(ipAddress)}</p>` : '';
+  const uaLine = userAgent ? `<p style="margin:0 0 16px 0;font-size:13px;line-height:18px;color:#4b5563;">Device: ${escapeHtml(userAgent)}</p>` : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Your ${appName} password was changed</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1f2937;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:32px auto;background:#ffffff;border-radius:8px;">
+    <tr>
+      <td style="padding:32px;">
+        <h1 style="margin:0 0 16px 0;font-size:20px;">Password changed</h1>
+        <p style="margin:0 0 16px 0;font-size:14px;line-height:20px;">Your ${appName} password was successfully changed.</p>
+        ${ipLine}
+        ${uaLine}
+        <p style="margin:0 0 16px 0;font-size:13px;line-height:18px;color:#4b5563;">If you did not perform this change, please reset your password immediately at <a href="${appUrl}/forgot-password" style="color:#2563eb;text-decoration:none;font-weight:600;">${appUrl}/forgot-password</a>.</p>
+        <p style="margin:0;font-size:12px;line-height:18px;color:#6b7280;">This notification was sent because a password reset was completed for your account. Your password was not changed until this email was sent.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+function renderPasswordChangedText(params: { appName: string; appUrl: string; ipAddress?: string; userAgent?: string }): string {
+  const { appName, appUrl, ipAddress, userAgent } = params;
+  return `Your ${appName} password was changed
+
+Your password was successfully changed.
+
+${ipAddress ? `IP address: ${ipAddress}` : ''}
+${userAgent ? `Device: ${userAgent}` : ''}
+
+If you did not perform this change, please reset your password immediately at:
+${appUrl}/forgot-password
+
+This notification was sent because a password reset was completed for your account.`;
+}
+
+/**
+ * Escape a string for safe inclusion in HTML output (prevents injection in
+ * the IP address / user-agent fields that come from client headers).
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Send a notification email after a password has been changed via the reset flow.
+ * This is a fire-and-forget call — failures are caught and logged by the caller,
+ * they never block the password-change response.
+ */
+export async function sendPasswordChangedNotification(
+  to: string,
+  metadata: PasswordChangedMetadata,
+): Promise<void> {
+  const appUrl = metadata.appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+
+  const { configured, missing } = isSmtpConfigured();
+
+  if (!configured) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.info(`[mail] SMTP not configured — password-changed notification for ${to} was not sent`);
+      return;
+    }
+    throw new Error(
+      'SMTP configuration is incomplete; cannot send email. ' +
+      `Missing: ${missing.join(', ')}`,
+    );
+  }
+
+  const from = process.env.SMTP_FROM!;
+  const transporter = getTransporter();
+  const html = renderPasswordChangedHtml({ appName: APP_NAME, appUrl, ipAddress: metadata.ipAddress, userAgent: metadata.userAgent });
+  const text = renderPasswordChangedText({ appName: APP_NAME, appUrl, ipAddress: metadata.ipAddress, userAgent: metadata.userAgent });
+
+  await transporter!.sendMail({
+    from,
+    to,
+    subject: `Your ${APP_NAME} password was changed`,
+    text,
+    html,
+  });
+}

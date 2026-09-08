@@ -55,3 +55,17 @@ export async function pruneExpiredRateLimits(): Promise<number> {
   });
   return cut.count;
 }
+
+/**
+ * Delete expired password-reset tokens (PENDING status with expiresAt in the past).
+ * Called probabilistically alongside rate-limit pruning to bound the
+ * `password_resets` table — expired tokens that are never cleaned up
+ * individually during a user's next forgot-request would otherwise
+ * accumulate indefinitely.
+ */
+export async function pruneExpiredPasswordResets(): Promise<number> {
+  const cut = await prisma.passwordReset.deleteMany({
+    where: { expiresAt: { lte: new Date() } },
+  });
+  return cut.count;
+}

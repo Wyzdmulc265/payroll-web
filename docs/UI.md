@@ -111,7 +111,8 @@ KPI card and per-department FBT column.
 
 **What it shows:** A paginated, searchable, filterable employee
 table, with an "Add / Edit" modal and a "Deactivate" confirmation
-dialog.
+dialog. Users with `MANAGE_EMPLOYEES` also see an **Import** button
+that opens `/employees/import`.
 
 **State:**
 - `employees` + `pagination`.
@@ -131,6 +132,24 @@ with neither, the modal hints to add departments in Settings.
 
 **Known issues** (see IMPROVEMENTS):
 - The modal is ~200 lines; should be extracted as `<EmployeeForm />`.
+
+### 3.2a `/employees/import` — `src/app/employees/import/page.tsx`
+
+**Who sees it:** users with `MANAGE_EMPLOYEES` (nav entry + direct URL).
+
+**What it shows:** A drag-and-drop dropzone (CSV, XLSX, XLS) with a
+Browse button and a Download Template button. After file selection,
+the page parses the file client-side using `xlsx` (SheetJS) and
+renders a preview table with per-row validation errors. Invalid rows
+are highlighted and skipped on confirm; valid rows are POSTed to
+`/api/employees/import` in a single batch. The result page shows
+imported count and a collapsible list of failed rows.
+
+**State:**
+- `dragOver`, `fileName`, `parsedRows` (array of `{ rowIndex, data, errors }`).
+- `submitting`, `importResult`.
+
+**Fetchers:** `POST /api/employees/import` with `{ rows: [...] }`.
 
 ### 3.3 `/payroll` — `src/app/payroll/page.tsx`
 

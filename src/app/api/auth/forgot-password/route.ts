@@ -5,7 +5,7 @@ import prisma from '@/lib/prisma';
 import { forgotPasswordSchema } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
 import { sendPasswordResetEmail, redactSmtpError } from '@/lib/mail';
-import { checkRateLimit } from '@/lib/auth/rate-limit';
+import { checkRateLimit, pruneExpiredPasswordResets } from '@/lib/auth/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +29,14 @@ export async function POST(request: NextRequest) {
           { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
         );
       }
+        }
+
+    // Probabilistic background cleanup: prune expired password-reset tokens
+    // ~5% of the time so the password_resets table cannot grow without bound.
+    // The per-user deleteMany above only cleans tokens for users actively
+    // requesting a reset; this catches the long-tail of never-used expirations.
+    if (Math.random() < 0.05) {
+      void pruneExpiredPasswordResets().catch(() => undefined);
     }
 
     // Email is unique per business, so one address may map to several

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, Search, Edit, Trash2, 
-  Loader2, XCircle, ChevronLeft, ChevronRight
+  Loader2, XCircle, ChevronLeft, ChevronRight, Upload
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/payroll-engine';
 import Link from 'next/link';
@@ -273,6 +273,10 @@ export default function EmployeesPage() {
             <Plus className="h-4 w-4 shrink-0" />
             Add Employee
           </button>
+          <Link href="/employees/import" className="btn-secondary">
+            <Upload className="h-4 w-4 shrink-0" />
+            Import
+          </Link>
         </div>
       </header>
 

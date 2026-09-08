@@ -62,6 +62,7 @@
     transition-duration: 150ms;
     outline: none;
     cursor: pointer;
+    -webkit-user-select: none;
     user-select: none;
   }
   .btn:focus-visible,
@@ -145,7 +146,7 @@
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 150ms;
     cursor: pointer;
-    user-select: none;
+    -webkit-user-select: none;
   }
   .btn-icon:focus-visible {
     outline: 2px solid #94a3b8;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent, use } from 'react';
+import { useState, useEffect, type FormEvent, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, Eye, EyeOff, Save, ShieldAlert } from 'lucide-react';
@@ -12,10 +12,31 @@ export default function ResetPasswordPage({ params }: { params: Promise<{ token:
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  
+
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Pre-validate the token on mount so a user with an expired/used link sees
+  // an inline "link invalid" state instead of a doomed password form. The
+  // authoritative check still happens server-side on submit.
+  const [tokenState, setTokenState] = useState<'checking' | 'valid' | 'invalid'>('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/auth/reset-password?token=${encodeURIComponent(token)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { valid?: boolean } | null) => {
+        if (!cancelled) setTokenState(json?.valid ? 'valid' : 'invalid');
+      })
+      .catch(() => {
+        // Network/unknown errors: don't block the form — POST re-validates.
+        if (!cancelled) setTokenState('valid');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Client-side strength check
   function validatePassword(pass: string): Record<string, string> {
@@ -81,6 +102,32 @@ export default function ResetPasswordPage({ params }: { params: Promise<{ token:
         </div>
 
         <div className="card shadow-xl border-gray-100">
+          {tokenState === 'checking' && (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+              <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mb-3" />
+              <p className="text-sm">Validating your reset link…</p>
+            </div>
+          )}
+
+          {tokenState === 'invalid' && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+              <div className="flex items-start gap-3">
+                <ShieldAlert className="h-5 w-5 text-red-600 mt-0.5" aria-hidden="true" />
+                <div>
+                  <h3 className="text-sm font-medium text-red-800">This reset link is invalid or has expired</h3>
+                  <p className="mt-1 text-sm text-red-700">Reset links expire after 1 hour and can only be used once.</p>
+                  <div className="mt-3">
+                    <Link href="/forgot-password" className="text-sm font-medium text-red-800 hover:text-red-900 underline">
+                      Request a new reset link
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tokenState === 'valid' && (
+          <>
           <h2 className="text-lg font-semibold text-gray-900 mb-1">Create new password</h2>
           <p className="text-sm text-gray-500 mb-6">
             Your new password must be at least 8 characters long and contain at least one uppercase letter and one number.
@@ -169,7 +216,9 @@ export default function ResetPasswordPage({ params }: { params: Promise<{ token:
               )}
             </button>
           </form>
-          
+          </>
+          )}
+
           <div className="mt-6 text-center">
              <Link href="/login" className="text-sm text-primary hover:text-primary-hover font-medium">
                Cancel and return to sign in

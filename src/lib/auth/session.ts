@@ -71,6 +71,10 @@ export async function invalidateSession(token: string, tx?: Prisma.TransactionCl
   await client.session.deleteMany({ where: { tokenHash: hashToken(token) } });
 }
 
-export async function invalidateAllSessionsForUser(userId: string): Promise<void> {
-  await prisma.session.deleteMany({ where: { userId } });
+export async function invalidateAllSessionsForUser(
+  userId: string,
+  tx?: Prisma.TransactionClient,
+): Promise<void> {
+  const client = tx ?? prisma;
+  await client.session.deleteMany({ where: { userId } });
 }
