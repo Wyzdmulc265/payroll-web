@@ -39,6 +39,10 @@ Additionally, the previous seed bypassed API handlers and called `prisma.employe
 
 - `DEMO_ACCOUNTS` array replaced with four entries: Admin A, Operator A, Admin B, Operator B.
 
+### `src/app/layout.tsx`
+
+- Switched `Inter` from `next/font/google` to `next/font/local` with self-hosted font files in `src/fonts/` to eliminate Google Fonts fetch timeouts in restricted environments.
+
 ### `prisma/schema.prisma:151`
 
 - Changed `@@index([nationalIdHash])` to `@@index([businessId, nationalIdHash])` so the index matches the query pattern.

@@ -96,8 +96,6 @@ function LoginForm() {
         sessionStorage.setItem('selectedBusinessName', businessName ?? '');
         router.push(fromParam ?? '/dashboard');
       }
-
-      router.refresh();
     } catch {
       setError('A network error occurred. Please try again.');
     } finally {
