@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Building2, Eye, EyeOff, LogIn } from 'lucide-react';
 import Link from 'next/link';
 
+const DEMO_ACCOUNTS = [
+  { role: 'ADMIN', label: 'Admin', email: 'admin@testbiz.local', password: 'AdminTest123', businessName: 'Test Business' },
+  { role: 'PAYROLL_OPERATOR', label: 'Operator', email: 'operator@testbiz.local', password: 'OperatorTest123', businessName: 'Test Business' },
+  { role: 'VIEWER', label: 'Viewer', email: 'viewer@testbiz.local', password: 'ViewerTest123', businessName: 'Test Business' },
+] as const;
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -19,6 +25,7 @@ function LoginForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [retryAfter, setRetryAfter] = useState(0);
+  const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
 
   useEffect(() => {
     if (retryAfter <= 0) return;
@@ -30,6 +37,15 @@ function LoginForm() {
     }, 1000);
     return () => clearInterval(timer);
   }, [retryAfter]);
+
+  function fillDemo(account: (typeof DEMO_ACCOUNTS)[number]) {
+    setEmail(account.email);
+    setPassword(account.password);
+    setBusinessField(account.businessName);
+    setFieldErrors({});
+    setError(null);
+    setSelectedDemo(account.role);
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -136,7 +152,7 @@ function LoginForm() {
                 autoComplete="email"
                 autoFocus
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setSelectedDemo(null); }}
                 className={`input ${fieldErrors.email ? 'border-red-400 focus:ring-red-400' : ''}`}
                 aria-invalid={!!fieldErrors.email}
                 aria-describedby={fieldErrors.email ? 'email-error' : undefined}
@@ -159,7 +175,7 @@ function LoginForm() {
                 type="text"
                 autoComplete="organization"
                 value={businessField}
-                onChange={(e) => setBusinessField(e.target.value)}
+                  onChange={(e) => { setBusinessField(e.target.value); setSelectedDemo(null); }}
                 className={`input ${fieldErrors.businessName ? 'border-red-400 focus:ring-red-400' : ''}`}
                 aria-invalid={!!fieldErrors.businessName}
                 aria-describedby={fieldErrors.businessName ? 'business-name-error' : undefined}
@@ -183,7 +199,7 @@ function LoginForm() {
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setSelectedDemo(null); }}
                   className={`input pr-10 ${fieldErrors.password ? 'border-red-400 focus:ring-red-400' : ''}`}
                   aria-invalid={!!fieldErrors.password}
                   aria-describedby={fieldErrors.password ? 'password-error' : undefined}
@@ -214,6 +230,25 @@ function LoginForm() {
               </div>
             </div>
 
+            <div className="mb-4">
+              <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wide">Demo Accounts</p>
+              <div className="grid grid-cols-3 gap-2">
+                {DEMO_ACCOUNTS.map((acct) => (
+                  <button
+                    key={acct.role}
+                    type="button"
+                    onClick={() => fillDemo(acct)}
+                    className={`btn-secondary text-xs py-1.5 ${
+                      selectedDemo === acct.role ? 'ring-2 ring-primary ring-offset-1' : ''
+                    }`}
+                    disabled={loading}
+                  >
+                    {acct.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               id="login-submit"
               type="submit"
@@ -228,7 +263,7 @@ function LoginForm() {
               ) : (
                 <>
                   <LogIn className="h-4 w-4" aria-hidden="true" />
-                  Sign in
+                  {selectedDemo ? `Sign in as ${DEMO_ACCOUNTS.find((a) => a.role === selectedDemo)?.label ?? ''}` : 'Sign in'}
                 </>
               )}
             </button>
