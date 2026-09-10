@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/local';
+import Inter from 'next/font/local';
 import { cookies } from 'next/headers';
 import MainNav from '@/components/MainNav';
 import { UserProvider } from '@/components/UserContext';
