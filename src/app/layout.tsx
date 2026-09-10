@@ -14,7 +14,7 @@ const inter = Inter({
     { path: '../fonts/Inter-700.woff2', weight: '700', style: 'normal' },
   ],
   display: 'swap',
-  preload: true,
+  preload: false,
 });
 
 export const metadata: Metadata = {
