@@ -69,7 +69,9 @@ const COLORS = ['#1e40af', '#059669', '#dc2626', '#d97706', '#7c3aed', '#0891b2'
 
 export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>(
+    new Date().toISOString().slice(0, 7),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -158,14 +160,6 @@ export default function DashboardPage() {
     },
   ];
 
-  if (loading && !dashboardData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   const currency = dashboardData?.currency || 'MWK';
 
   const formatCompact = (value: number) => {
@@ -174,6 +168,8 @@ export default function DashboardPage() {
     if (value >= 1e3) return `${currency} ${(value / 1e3).toFixed(1)}K`;
     return `${currency} ${value.toFixed(0)}`;
   };
+
+  const isLoading = loading && !dashboardData;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -201,7 +197,14 @@ export default function DashboardPage() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-        {/* Error Banner */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="sr-only">Loading dashboard</span>
+          </div>
+        ) : (
+          <>
+            {/* Error Banner */}
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0" />
@@ -443,6 +446,8 @@ export default function DashboardPage() {
               </table>
             </div>
           </div>
+          </>
+        )}
       </main>
     </div>
   );

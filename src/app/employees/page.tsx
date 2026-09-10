@@ -119,7 +119,7 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  }, [pagination, search, departmentFilter, statusFilter]);
+  }, [pagination.page, pagination.limit, search, departmentFilter, statusFilter]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
