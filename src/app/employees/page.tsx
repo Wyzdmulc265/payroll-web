@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   Plus, Search, Edit, Trash2, 
-  Loader2, XCircle, ChevronLeft, ChevronRight, Upload
+  Loader2, XCircle, ChevronLeft, ChevronRight, Upload, AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/payroll-engine';
 import Link from 'next/link';
@@ -90,8 +90,11 @@ export default function EmployeesPage() {
   const modalRef = useRef<HTMLDivElement>(null);
   useFocusTrap(showModal, modalRef);
 
+  const [error, setError] = useState<string | null>(null);
+
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         page: pagination.page.toString(),
@@ -100,16 +103,19 @@ export default function EmployeesPage() {
         ...(departmentFilter !== 'All' && { department: departmentFilter }),
         ...(statusFilter !== 'All' && { status: statusFilter }),
       });
-      const res = await fetch(`/api/employees?${params}`);
+      const res = await fetch(`/api/employees?${params}`, { credentials: 'include' });
       const data = await res.json();
       if (data.success) {
         setEmployees(data.data);
         setPagination(data.pagination);
         const depts = [...new Set((data.data as Employee[]).map((e) => e.department))].sort();
         setDepartments(depts);
+      } else {
+        setError(data.error || 'Failed to load employees');
       }
     } catch (error) {
       console.error('Failed to fetch employees:', error);
+      setError('Network error loading employees');
     } finally {
       setLoading(false);
     }
@@ -327,6 +333,12 @@ export default function EmployeesPage() {
 
         {/* Table */}
         <div className="card">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
