@@ -3,6 +3,7 @@ import { PrismaClient } from './generated/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
+import { encryptPii } from '../src/lib/encryption';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -161,6 +162,11 @@ async function main() {
 
   for (const emp of employeeDefs) {
     const nationalIdHash = emp.nationalId ? hashNationalId(emp.nationalId) : null;
+    const encryptedPii = encryptPii({
+      nationalId: emp.nationalId,
+      accountNumber: emp.accountNumber,
+      taxNumber: null,
+    });
     await prisma.employee.create({
       data: {
         employeeId: emp.employeeId,
@@ -168,7 +174,7 @@ async function main() {
         firstName: emp.firstName,
         lastName: emp.lastName,
         fullName: `${emp.firstName} ${emp.lastName}`,
-        nationalId: emp.nationalId,
+        nationalId: encryptedPii.nationalId,
         nationalIdHash,
         employmentStatus: 'Active',
         department: emp.department,
@@ -179,11 +185,11 @@ async function main() {
         salaryFrequency: 'Monthly',
         allowances: 0,
         bankName: emp.bankName,
-        accountNumber: emp.accountNumber,
+        accountNumber: encryptedPii.accountNumber,
         paymentMethod: 'Bank Transfer',
         pensionApplicable: true,
         taxStatus: 'Taxable',
-        taxNumber: null,
+        taxNumber: encryptedPii.taxNumber,
         notes: null,
         isActive: true,
       },
