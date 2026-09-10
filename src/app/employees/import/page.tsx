@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useToast } from '@/hooks/useToast';
 import { importEmployeeRowSchema, IMPORT_COLUMNS } from '@/lib/import-employees';
 import type { ImportEmployeeRow } from '@/lib/import-employees';
-import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
+import ExcelJS from 'exceljs';
 import {
   Upload,
   FileSpreadsheet,
@@ -43,65 +44,96 @@ export default function EmployeeImportPage() {
     setFileName(file.name);
     setImportResult(null);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        if (!firstSheet) {
-          showToast('No sheets found in the file', 'error');
-          return;
-        }
-        const json = XLSX.utils.sheet_to_json<Record<string, string>>(firstSheet, { defval: '' });
+    const ext = file.name.split('.').pop()?.toLowerCase();
 
-        if (json.length === 0) {
-          showToast('The file appears to be empty', 'error');
-          return;
-        }
+    const processRows = (rows: Record<string, string>[]) => {
+      if (rows.length === 0) {
+        showToast('The file appears to be empty', 'error');
+        return;
+      }
 
-        const rows: ParsedRow[] = json.map((row, idx) => {
-          const mapped: Record<string, unknown> = {
-            employeeId: String(row['Employee ID'] || row['employeeId'] || '').trim(),
-            firstName: String(row['First Name'] || row['firstName'] || '').trim(),
-            lastName: String(row['Last Name'] || row['lastName'] || '').trim(),
-            nationalId: String(row['National ID'] || row['nationalId'] || '').trim(),
-            department: String(row['Department'] || row['department'] || '').trim(),
-            position: String(row['Position'] || row['position'] || '').trim(),
-            employmentDate: String(row['Employment Date'] || row['employmentDate'] || '').trim(),
-            employmentType: (String(row['Employment Type'] || row['employmentType'] || 'Permanent').trim() as 'Permanent' | 'Contract') || 'Permanent',
-            basicSalary: String(row['Basic Salary (MWK)'] || row['basicSalary'] || '').trim(),
-            salaryFrequency: (String(row['Salary Frequency'] || row['salaryFrequency'] || 'Monthly').trim() as 'Monthly' | 'Weekly' | 'Fortnightly') || 'Monthly',
-            allowances: String(row['Allowances (MWK)'] || row['allowances'] || '0').trim(),
-            bankName: String(row['Bank Name'] || row['bankName'] || '').trim(),
-            accountNumber: String(row['Account Number'] || row['accountNumber'] || '').trim(),
-            paymentMethod: (String(row['Payment Method'] || row['paymentMethod'] || 'Bank Transfer').trim() as 'Bank Transfer' | 'Cash' | 'Mobile Money') || 'Bank Transfer',
-            pensionApplicable: String(row['Pension Applicable'] || row['pensionApplicable'] || 'true').trim().toLowerCase() === 'true',
-            taxStatus: (String(row['Tax Status'] || row['taxStatus'] || 'Taxable').trim() as 'Taxable' | 'Exempt') || 'Taxable',
-            taxNumber: String(row['Tax Number (TPIN)'] || row['taxNumber'] || '').trim(),
-            notes: String(row['Notes'] || row['notes'] || '').trim(),
-          };
+      const parsed: ParsedRow[] = rows.map((row, idx) => {
+        const mapped: Record<string, unknown> = {
+          employeeId: String(row['Employee ID'] || row['employeeId'] || '').trim(),
+          firstName: String(row['First Name'] || row['firstName'] || '').trim(),
+          lastName: String(row['Last Name'] || row['lastName'] || '').trim(),
+          nationalId: String(row['National ID'] || row['nationalId'] || '').trim(),
+          department: String(row['Department'] || row['department'] || '').trim(),
+          position: String(row['Position'] || row['position'] || '').trim(),
+          employmentDate: String(row['Employment Date'] || row['employmentDate'] || '').trim(),
+          employmentType: (String(row['Employment Type'] || row['employmentType'] || 'Permanent').trim() as 'Permanent' | 'Contract') || 'Permanent',
+          basicSalary: String(row['Basic Salary (MWK)'] || row['basicSalary'] || '').trim(),
+          salaryFrequency: (String(row['Salary Frequency'] || row['salaryFrequency'] || 'Monthly').trim() as 'Monthly' | 'Weekly' | 'Fortnightly') || 'Monthly',
+          allowances: String(row['Allowances (MWK)'] || row['allowances'] || '0').trim(),
+          bankName: String(row['Bank Name'] || row['bankName'] || '').trim(),
+          accountNumber: String(row['Account Number'] || row['accountNumber'] || '').trim(),
+          paymentMethod: (String(row['Payment Method'] || row['paymentMethod'] || 'Bank Transfer').trim() as 'Bank Transfer' | 'Cash' | 'Mobile Money') || 'Bank Transfer',
+          pensionApplicable: String(row['Pension Applicable'] || row['pensionApplicable'] || 'true').trim().toLowerCase() === 'true',
+          taxStatus: (String(row['Tax Status'] || row['taxStatus'] || 'Taxable').trim() as 'Taxable' | 'Exempt') || 'Taxable',
+          taxNumber: String(row['Tax Number (TPIN)'] || row['taxNumber'] || '').trim(),
+          notes: String(row['Notes'] || row['notes'] || '').trim(),
+        };
 
-          const result = importEmployeeRowSchema.safeParse(mapped);
-          const errors = result.success ? [] : result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
-          return { rowIndex: idx + 1, data: mapped, errors };
-        });
+        const result = importEmployeeRowSchema.safeParse(mapped);
+        const errors = result.success ? [] : result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+        return { rowIndex: idx + 1, data: mapped, errors };
+      });
 
-        const validCount = rows.filter((r) => r.errors.length === 0).length;
-        const errorCount = rows.length - validCount;
+      const validCount = parsed.filter((r) => r.errors.length === 0).length;
+      const errorCount = parsed.length - validCount;
 
-        setParsedRows(rows);
-        if (errorCount > 0) {
-          showToast(`Parsed ${rows.length} rows: ${validCount} valid, ${errorCount} with errors`, 'warning');
-        } else {
-          showToast(`Parsed ${rows.length} rows — all valid`, 'success');
-        }
-      } catch (err) {
-        console.error('Failed to parse file:', err);
-        showToast('Failed to parse the file. Ensure it is a valid CSV or XLSX.', 'error');
+      setParsedRows(parsed);
+      if (errorCount > 0) {
+        showToast(`Parsed ${parsed.length} rows: ${validCount} valid, ${errorCount} with errors`, 'warning');
+      } else {
+        showToast(`Parsed ${parsed.length} rows — all valid`, 'success');
       }
     };
-    reader.readAsArrayBuffer(file);
+
+    if (ext === 'csv') {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => processRows(results.data as Record<string, string>[]),
+        error: () => showToast('Failed to parse CSV file', 'error'),
+      });
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const buffer = e.target?.result as ArrayBuffer;
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(buffer);
+          const sheet = workbook.getWorksheet(workbook.worksheets[0]?.name || '');
+          if (!sheet) {
+            showToast('No sheets found in the file', 'error');
+            return;
+          }
+          const rows: Record<string, string>[] = [];
+          const headers: string[] = [];
+          sheet.eachRow((row, rowNumber) => {
+            const rowData: Record<string, string> = {};
+            row.eachCell((cell, colNumber) => {
+              if (rowNumber === 1) {
+                headers[colNumber - 1] = String(cell.value || '').trim();
+              } else {
+                const header = headers[colNumber - 1] || `col_${colNumber}`;
+                rowData[header] = String(cell.value || '').trim();
+              }
+            });
+            if (rowNumber > 1) {
+              rows.push(rowData);
+            }
+          });
+          processRows(rows);
+        } catch {
+          showToast('Failed to parse XLSX file', 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      showToast('Unsupported file format', 'error');
+    }
   }, [showToast]);
 
   const handleFile = useCallback((file: File) => {

@@ -38,7 +38,7 @@ export function PeriodPicker({ value, onChange, disabled, label = 'Period', id }
     };
     fetchPeriods();
     return () => { cancelled = true; };
-  }, []);
+  }, [onChange, suggestedPeriod, value]);
 
   const handleMonthInput = (v: string) => {
     if (!v) return;

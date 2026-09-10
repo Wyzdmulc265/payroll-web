@@ -107,20 +107,6 @@ function BusinessesPageInner() {
     }
   }, [statusFilter]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchBusinesses();
-  }, [fetchBusinesses]);
-
-  useEffect(() => {
-    const drawerId = searchParams.get('drawer');
-    if (!drawerId || drawerBusiness) return;
-    const match = businesses.find((b) => b.id === drawerId);
-    if (match) {
-      openDrawer(match);
-    }
-  }, [searchParams, businesses, drawerBusiness]);
-
   const fetchAdmins = useCallback(async (businessId: string) => {
     setDrawerLoading(true);
     setDrawerAdmins([]);
@@ -139,15 +125,25 @@ function BusinessesPageInner() {
     }
   }, []);
 
-  function openDrawer(b: BusinessDto) {
+  const openDrawer = useCallback((b: BusinessDto) => {
     setDrawerBusiness(b);
     fetchAdmins(b.id);
-  }
+  }, [fetchAdmins]);
 
-  function closeDrawer() {
+  const closeDrawer = useCallback(() => {
     setDrawerBusiness(null);
     setDrawerAdmins([]);
-  }
+  }, []);
+
+  useEffect(() => {
+    const drawerId = searchParams.get('drawer');
+    if (!drawerId || drawerBusiness) return;
+    const match = businesses.find((b) => b.id === drawerId);
+    if (match) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      openDrawer(match);
+    }
+  }, [searchParams, businesses, drawerBusiness, openDrawer]);
 
   function validateAdminForm(): Record<string, string> {
     const errors: Record<string, string> = {};

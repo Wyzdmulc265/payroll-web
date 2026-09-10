@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma, { Prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';

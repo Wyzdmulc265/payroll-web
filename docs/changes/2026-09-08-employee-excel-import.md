@@ -22,7 +22,7 @@ Adding employees one-by-one through the modal is slow for bulk onboarding (e.g. 
 
 ## 3. How it works
 
-- **Client-side parsing**: the `xlsx` (SheetJS) library parses the uploaded file in the browser. The API never receives a binary file — only a JSON array of rows. This matches the existing architecture where pages call the API via `fetch()` and never import Prisma.
+- **Client-side parsing**: `papaparse` (CSV) and `exceljs` (XLSX/XLS) parse the uploaded file in the browser. The API never receives a binary file — only a JSON array of rows. `xlsx` (SheetJS) was initially chosen but removed because it has two high-severity, unpatched vulnerabilities (prototype pollution and ReDoS) with no fix available from the maintainer.
 - **Row schema**: `src/lib/import-employees.ts` exports `importEmployeeRowSchema` (Zod), used both client-side for preview validation and server-side for final validation.
 - **Bulk create**: `src/app/api/employees/import/route.ts` iterates the validated rows, checks for duplicate `employeeId` and `nationalId` per business, then creates all valid rows inside a single `prisma.$transaction`. PII fields (`nationalId`, `accountNumber`, `taxNumber`) are encrypted via the existing `encryptPii` helper.
 - **Audit**: one `AuditLog` row per import batch (`EMPLOYEES_IMPORTED`), with the count and internal IDs of created employees.
@@ -37,7 +37,7 @@ Adding employees one-by-one through the modal is slow for bulk onboarding (e.g. 
 
 ## 5. Risks and trade-offs
 
-- **New dependency**: `xlsx` (~200 KB, zero native deps) added to `package.json`. It is a well-maintained, browser-safe library; the alternative (server-side parsing) would require multipart upload handling and temp file storage, which is heavier for a small team tool.
+- **New dependencies**: `papaparse` (~45 KB) and `exceljs` (~500 KB) replaced the initially chosen `xlsx` package. `xlsx` had two high-severity, unpatched vulnerabilities (prototype pollution GHSA-4r6h-8v6p-xvw6 and ReDoS GHSA-5pgg-2g8v-p4x9) with no fix available. `papaparse` is the de facto standard CSV parser for the browser; `exceljs` is actively maintained and supports client-side XLSX reading. Both are zero native-dep packages.
 - **Client-side parsing**: very large files (1000+ rows) will block the main thread during parsing. The existing employee list paginates at 20–100 rows, so typical imports are small. If large-file imports become common, a Web Worker or server-side parse path can be added later.
 - **No partial rollback**: within a single import, valid rows are committed together. If the transaction fails mid-way (e.g. DB connection loss), zero rows are written (transaction abort). There is no "import 50 of 100" partial state.
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { 
   Users, DollarSign, CreditCard, Banknote,
@@ -73,7 +73,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -90,14 +90,14 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPeriod]);
 
   useEffect(() => {
     if (selectedPeriod) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchDashboard();
     }
-  }, [selectedPeriod]);
+  }, [selectedPeriod, fetchDashboard]);
 
   const kpiCards = [
     { 

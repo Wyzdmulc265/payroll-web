@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
-import { getRequestIp, logAuditEvent } from '@/lib/audit';
+import { getRequestIp, logAuditEvent, redactEmployeeForAudit } from '@/lib/audit';
 import { decryptPii } from '@/lib/encryption';
 import { createHash } from 'node:crypto';
 
@@ -18,9 +18,9 @@ const updateEmployeeSchema = z.object({
   position: z.string().optional(),
   employmentDate: z.coerce.date().optional(),
   employmentType: z.enum(['Permanent', 'Contract']).optional(),
-  basicSalary: z.number().positive().optional(),
+  basicSalary: z.coerce.number().positive().optional(),
   salaryFrequency: z.string().optional(),
-  allowances: z.number().nonnegative().optional(),
+  allowances: z.coerce.number().nonnegative().optional(),
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),
   paymentMethod: z.string().optional(),
@@ -43,7 +43,7 @@ export async function GET(
     if (denied) return denied;
     if (!session.user.businessId) return unauthorized();
     const { id } = await params;
-    
+
     const employee = await prisma.employee.findUnique({
       where: { id, businessId: session.user.businessId },
       include: {
@@ -150,7 +150,9 @@ export async function PUT(
         action: 'EMPLOYEE_UPDATED', entityType: 'Employee', entityId: id,
         userId: session.user.id, businessId,
         description: `Updated employee ${updated.employeeId}`,
-        previousData: existing, newData: updated, ipAddress: getRequestIp(request),
+        previousData: redactEmployeeForAudit(existing),
+        newData: redactEmployeeForAudit(updated),
+        ipAddress: getRequestIp(request),
       }, tx);
 
       return updated;
@@ -184,7 +186,7 @@ export async function DELETE(
     if (!session.user.businessId) return unauthorized();
     const businessId = session.user.businessId;
     const { id } = await params;
-    
+
     const existing = await prisma.employee.findFirst({ where: { id, businessId } });
     if (!existing) {
       return NextResponse.json(
@@ -204,7 +206,9 @@ export async function DELETE(
         action: 'EMPLOYEE_DEACTIVATED', entityType: 'Employee', entityId: id,
         userId: session.user.id, businessId,
         description: `Deactivated employee ${updated.employeeId}`,
-        previousData: existing, newData: updated, ipAddress: getRequestIp(request),
+        previousData: redactEmployeeForAudit(existing),
+        newData: redactEmployeeForAudit(updated),
+        ipAddress: getRequestIp(request),
       }, tx);
 
       return updated;

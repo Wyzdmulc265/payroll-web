@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   Plus, Search, Edit, Trash2, 
   Loader2, XCircle, ChevronLeft, ChevronRight, Upload
@@ -90,7 +90,7 @@ export default function EmployeesPage() {
   const modalRef = useRef<HTMLDivElement>(null);
   useFocusTrap(showModal, modalRef);
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -113,13 +113,12 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination, search, departmentFilter, statusFilter]);
 
   useEffect(() => {
-    // Initial data load: setLoading fires synchronously inside the fetch helper by design.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEmployees();
-  }, [pagination.page, search, departmentFilter, statusFilter]);
+  }, [fetchEmployees]);
 
   useEffect(() => {
     // Configured departments (Settings → Company), once per mount.

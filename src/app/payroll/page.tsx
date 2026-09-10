@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { 
   Calculator, CheckCircle, AlertCircle,
@@ -161,7 +161,33 @@ export default function PayrollPage() {
     }));
   };
 
-  const fetchEmployees = async () => {
+  const fetchConfig = useCallback(async (period?: string) => {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      if (data.success) {
+        const [py, pm] = (period || selectedPeriod || suggestedPeriod).split('-').map(Number);
+        const asOf = Number.isFinite(py) && Number.isFinite(pm)
+          ? new Date(py, pm, 0)
+          : new Date();
+        const effective = selectEffectiveSettings(
+          (data.data as { key: string; value: string; effectiveFrom?: string }[]),
+          asOf
+        );
+        setConfig(buildStatutoryConfigFromSettings(effective));
+      }
+    } catch (error) {
+      console.error('Failed to fetch config:', error);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchConfig();
+  }, [fetchConfig]);
+
+  const fetchEmployees = useCallback(async () => {
     try {
       const [py, pm] = selectedPeriod.split('-').map(Number);
       const periodEnd = new Date(py, pm, 0);
@@ -212,32 +238,7 @@ export default function PayrollPage() {
       console.error('Failed to fetch employees:', error);
       setError('Failed to load employees');
     }
-  };
-
-  const fetchConfig = async (period?: string) => {
-    try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
-      if (data.success) {
-        const [py, pm] = (period || selectedPeriod || suggestedPeriod).split('-').map(Number);
-        const asOf = Number.isFinite(py) && Number.isFinite(pm)
-          ? new Date(py, pm, 0)
-          : new Date();
-        const effective = selectEffectiveSettings(
-          (data.data as { key: string; value: string; effectiveFrom?: string }[]),
-          asOf
-        );
-        setConfig(buildStatutoryConfigFromSettings(effective));
-      }
-    } catch (error) {
-      console.error('Failed to fetch config:', error);
-    }
-  };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchConfig();
-  }, []);
+  }, [selectedPeriod]);
 
   useEffect(() => {
     if (selectedPeriod) {
@@ -247,7 +248,7 @@ export default function PayrollPage() {
       setError(null);
       setSuccessMessage(null);
     }
-  }, [selectedPeriod]);
+  }, [selectedPeriod, fetchEmployees]);
 
   useEffect(() => {
     const container = tableContainerRef.current;

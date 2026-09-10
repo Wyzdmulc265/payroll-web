@@ -75,18 +75,33 @@ export async function POST(request: NextRequest) {
     // round-trip, implicitly atomic, and has no interactive-transaction
     // timeout to expire. businessId is guaranteed non-null above, so the
     // (key, business_id, effective_from) conflict target always applies.
-    await prisma.$executeRaw`
+    //
+    // The upsert and the audit row are wrapped in one $transaction so the
+    // settings change cannot be persisted without a matching AuditLog row.
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
       INSERT INTO "settings" ("id", "key", "value", "description", "category", "effective_from", "business_id")
       VALUES ${Prisma.join(
         validatedData.map((row) =>
           Prisma.sql`(gen_random_uuid(), ${row.key}, ${row.value}, ${row.description ?? null}, ${row.category}, ${row.effectiveFrom ? new Date(row.effectiveFrom) : new Date()}, ${businessId})`,
         ),
       )}
-      ON CONFLICT ("key", "business_id", "effective_from") DO UPDATE SET
-        "value" = EXCLUDED."value",
-        "description" = EXCLUDED."description",
-        "category" = EXCLUDED."category"
-    `;
+          ON CONFLICT ("key", "business_id", "effective_from") DO UPDATE SET
+            "value" = EXCLUDED."value",
+            "description" = EXCLUDED."description",
+            "category" = EXCLUDED."category"
+        `;
+        await logAuditEvent({
+          action: 'SETTINGS_BATCH_UPDATED',
+          entityType: 'Settings',
+          entityId: 'batch',
+          userId: session.user.id,
+          businessId,
+          description: `Batch updated ${validatedData.length} setting(s)`,
+          newData: validatedData,
+          ipAddress: getRequestIp(request),
+        }, tx);
+      });
     // Re-read and collapse to the latest-effective row per key (settings are
     // history-aware; the page expects one active value per key).
     const rawResults = await prisma.settings.findMany({
@@ -99,18 +114,6 @@ export async function POST(request: NextRequest) {
       seen.add(row.key);
       return true;
     });
-
-    await logAuditEvent({
-      action: 'SETTINGS_BATCH_UPDATED',
-      entityType: 'Settings',
-      entityId: 'batch',
-      userId: session.user.id,
-      businessId,
-      description: `Batch updated ${results.length} setting(s)`,
-      newData: validatedData,
-      ipAddress: getRequestIp(request),
-    });
-
     return NextResponse.json({ success: true, data: results });
   } catch (error) {
     if (error instanceof z.ZodError) {

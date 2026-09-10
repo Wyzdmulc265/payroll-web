@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma, { Prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
-import { getRequestIp, logAuditEvent } from '@/lib/audit';
+import { getRequestIp, logAuditEvent, redactEmployeeForAudit } from '@/lib/audit';
 import { encryptPii, decryptPiiArray } from '@/lib/encryption';
 import { createHash } from 'node:crypto';
 
@@ -19,9 +19,9 @@ const employeeSchema = z.object({
   position: z.string().min(1),
   employmentDate: z.coerce.date(),
   employmentType: z.enum(['Permanent', 'Contract']).default('Permanent'),
-  basicSalary: z.number().positive(),
+  basicSalary: z.coerce.number().positive(),
   salaryFrequency: z.string().default('Monthly'),
-  allowances: z.number().nonnegative().default(0),
+  allowances: z.coerce.number().nonnegative().default(0),
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),
   paymentMethod: z.string().default('Bank Transfer'),
@@ -49,11 +49,11 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     const where: Prisma.EmployeeWhereInput = { businessId: session.user.businessId };
-    
+
     if (department && department !== 'All') {
       where.department = department;
     }
-    
+
     if (status && status !== 'All') {
       where.employmentStatus = status;
     }
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     if (asOf) {
       where.employmentDate = { lte: new Date(asOf) };
     }
-    
+
     if (search) {
       where.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },
@@ -178,7 +178,8 @@ export async function POST(request: NextRequest) {
       await logAuditEvent({
         action: 'EMPLOYEE_CREATED', entityType: 'Employee', entityId: created.id,
         userId: session.user.id, businessId,
-        description: `Created employee ${created.employeeId}`, newData: created,
+        description: `Created employee ${created.employeeId}`,
+        newData: redactEmployeeForAudit(created),
         ipAddress: getRequestIp(request),
       }, tx);
 

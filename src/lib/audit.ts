@@ -25,6 +25,58 @@ export type AuditEvent = {
   newData?: unknown;
   ipAddress?: string | null;
 };
+/**
+ * Fields on an Employee record that must NEVER be written into
+ * `AuditLog.oldValue`/`newValue`. The audit table stores JSON as text and
+ * is readable by anyone with DB access, so it must not contain plaintext
+ * PII (national ID, bank account, tax number) or other confidential data
+ * (salary figures, notes, banking details).
+ *
+ * The PII triple is excluded because some call sites pass the *decrypted*
+ * or *pretransformation* record; the salary/notes/bank fields are excluded
+ * because salaries are confidential and `notes` is free-form.
+ */
+const EMPLOYEE_AUDIT_REDACTED_FIELDS = [
+  'basicSalary', 'allowances', 'nationalId', 'nationalIdHash', 'accountNumber',
+  'taxNumber', 'bankName', 'notes',
+] as const;
+/**
+ * Return a minimal, non-confidential projection of an Employee record for
+ * the audit trail. Kept deliberately allow-list rather than deny-list so a
+ * newly added confidential field is dropped by default until explicitly
+ * whitelisted.
+ */
+export function redactEmployeeForAudit<T extends Record<string, unknown>>(
+  employee: T,
+): Record<string, unknown> {
+  const allow = [
+    'id', 'employeeId', 'businessId', 'firstName', 'lastName', 'fullName',
+    'department', 'position', 'employmentDate', 'employmentType',
+    'employmentStatus', 'salaryFrequency', 'paymentMethod',
+    'pensionApplicable', 'taxStatus', 'isActive', 'createdAt', 'updatedAt',
+  ] as const;
+  const out: Record<string, unknown> = {};
+  for (const key of allow) {
+    if (key in employee) out[key] = employee[key];
+  }
+  // Belt-and-suspenders: never emit a redacted field even if it somehow
+  // enters the allow list by accident.
+  for (const key of EMPLOYEE_AUDIT_REDACTED_FIELDS) {
+    delete out[key];
+  }
+  return out;
+}
+/**
+ * Redact a full `Settings` row for the audit trail, dropping only the raw
+ * `value` (which may hold statutory rates or other sensitive config) while
+ * preserving enough metadata to answer "when was this key changed".
+ */
+export function redactSettingsForAudit<T extends Record<string, unknown>>(
+  setting: T,
+): Record<string, unknown> {
+  const { value: _value, ...rest } = setting;
+  return rest;
+}
 
 function serialize(value: unknown): string | undefined {
   return value === undefined ? undefined : JSON.stringify(value);

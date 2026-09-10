@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { LucideIcon } from 'lucide-react';
 import {
   Settings, Building2, DollarSign, Shield,
@@ -257,6 +258,7 @@ function bandsToMap(bands: BandRow[]): Record<string, string> {
 export default function SettingsPage() {
   const { showToast, Toast } = useToast();
   const user = useCurrentUser();
+  const router = useRouter();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const [accountForm, setAccountForm] = useState({
@@ -281,7 +283,7 @@ export default function SettingsPage() {
     category: 'COMPANY' as Category,
     effectiveFrom: new Date().toISOString().split('T')[0],
   });
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [formErrors] = useState<Record<string, string>>({});
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     paye: true,
     pension: true,
@@ -462,7 +464,7 @@ export default function SettingsPage() {
           return;
         }
         if (accountForm.newPassword) {
-          window.location.href = '/login?reset=1';
+          router.push('/login?reset=1');
         } else {
           showToast('Account updated');
           setAccountForm({ email: json.data.email, newPassword: '', confirmPassword: '', currentPassword: '' });
