@@ -148,7 +148,7 @@ model Employee {
   @@index([employmentStatus])
   @@index([isActive])
   @@index([businessId, isActive])
-  @@index([nationalIdHash])
+  @@index([businessId, nationalIdHash])
   @@map("employees")
 }
 

@@ -6,9 +6,10 @@ import { Building2, Eye, EyeOff, LogIn } from 'lucide-react';
 import Link from 'next/link';
 
 const DEMO_ACCOUNTS = [
-  { role: 'ADMIN', label: 'Admin', email: 'admin@testbiz.local', password: 'AdminTest123', businessName: 'Test Business' },
-  { role: 'PAYROLL_OPERATOR', label: 'Operator', email: 'operator@testbiz.local', password: 'OperatorTest123', businessName: 'Test Business' },
-  { role: 'VIEWER', label: 'Viewer', email: 'viewer@testbiz.local', password: 'ViewerTest123', businessName: 'Test Business' },
+  { role: 'ADMIN_A', label: 'Admin A', sublabel: 'Test Business', email: 'admin-a@testbiz.local', password: 'AdminTest123', businessName: 'Test Business' },
+  { role: 'OPERATOR_A', label: 'Operator A', sublabel: 'Test Business', email: 'operator-a@testbiz.local', password: 'OperatorTest123', businessName: 'Test Business' },
+  { role: 'ADMIN_B', label: 'Admin B', sublabel: 'Test Business B', email: 'admin-b@testbiz.local', password: 'AdminTest123', businessName: 'Test Business B' },
+  { role: 'OPERATOR_B', label: 'Operator B', sublabel: 'Test Business B', email: 'operator-b@testbiz.local', password: 'OperatorTest123', businessName: 'Test Business B' },
 ] as const;
 
 function LoginForm() {
@@ -232,7 +233,7 @@ function LoginForm() {
 
             <div className="mb-4">
               <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wide">Demo Accounts</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {DEMO_ACCOUNTS.map((acct) => (
                   <button
                     key={acct.role}
@@ -243,7 +244,8 @@ function LoginForm() {
                     }`}
                     disabled={loading}
                   >
-                    {acct.label}
+                    <span className="block font-medium">{acct.label}</span>
+                    <span className="block text-[10px] text-gray-500">{acct.sublabel}</span>
                   </button>
                 ))}
               </div>
@@ -263,7 +265,7 @@ function LoginForm() {
               ) : (
                 <>
                   <LogIn className="h-4 w-4" aria-hidden="true" />
-                  {selectedDemo ? `Sign in as ${DEMO_ACCOUNTS.find((a) => a.role === selectedDemo)?.label ?? ''}` : 'Sign in'}
+                      {selectedDemo ? `Sign in as ${DEMO_ACCOUNTS.find((a) => a.role === selectedDemo)?.label ?? ''} · ${DEMO_ACCOUNTS.find((a) => a.role === selectedDemo)?.sublabel ?? ''}` : 'Sign in'}
                 </>
               )}
             </button>
