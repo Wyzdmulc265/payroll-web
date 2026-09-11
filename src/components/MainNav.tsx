@@ -10,12 +10,14 @@ import {
   TrendingUp,
   Settings,
   Building2,
+  BookOpen,
   LogOut,
   UserCog,
   ScrollText,
   Upload,
 } from 'lucide-react';
 import { useCurrentUser } from './UserContext';
+import { canViewHowTo } from '@/lib/how-to-nav';
 import { Permission, hasPermission } from '@/lib/auth/permissions';
 import { ReactNode } from 'react';
 
@@ -25,6 +27,7 @@ const ALL_NAV: {
   icon: typeof Users;
   permission: Permission;
   requiresBusiness?: boolean;
+  howTo?: boolean;
 }[] = [
   { name: 'Dashboard', href: '/dashboard', icon: TrendingUp, permission: Permission.READ_PAYROLL },
   { name: 'Employees', href: '/employees', icon: Users, permission: Permission.READ_EMPLOYEES },
@@ -36,6 +39,7 @@ const ALL_NAV: {
   { name: 'Businesses', href: '/businesses', icon: Building2, permission: Permission.MANAGE_BUSINESSES },
   { name: 'Users', href: '/users', icon: UserCog, permission: Permission.MANAGE_USERS, requiresBusiness: true },
   { name: 'Audit Logs', href: '/audit-logs', icon: ScrollText, permission: Permission.READ_AUDIT_LOGS, requiresBusiness: true },
+  { name: 'Know Your App', href: '/know-your-app', icon: BookOpen, permission: Permission.READ_PAYROLL, howTo: true },
 ];
 
 // SUPER_ADMIN gets a focused 4-tab experience: Home, Business Management,
@@ -45,6 +49,7 @@ const SUPER_ADMIN_NAV: { name: string; href: string; icon: typeof Users }[] = [
   { name: 'Business Management', href: '/businesses', icon: Building2 },
   { name: 'Settings', href: '/settings', icon: Settings },
   { name: 'Audit Logs', href: '/audit-logs', icon: ScrollText },
+  { name: 'Know Your App', href: '/know-your-app', icon: BookOpen },
 ];
 
 /**
@@ -83,6 +88,7 @@ export default function MainNav({ children }: { children: ReactNode }) {
     : ALL_NAV.filter((item) => {
         if (!user) return false;
         if (item.requiresBusiness && !user.businessId) return false;
+        if (item.howTo) return canViewHowTo(user.role);
         if (item.name === 'Dashboard') {
           return hasPermission(user.role, Permission.READ_PAYROLL) || hasPermission(user.role, Permission.READ_EMPLOYEES);
         }

@@ -769,3 +769,31 @@ Every error response has the shape:
 ```json
 { "success": false, "error": "<human-readable>", "details": [<optional Zod issue array>] }
 ```
+
+## 10. How-To Manual
+
+### `GET /api/how-to-manual`
+
+Serves the in-app **Know Your App** guide (sourced from `docs/how-to-manual.md`)
+as raw Markdown, rendered by the `/know-your-app` page via the `HowToGuide`
+component.
+
+**Who can access:** `SUPER_ADMIN`, `ADMIN`, and `PAYROLL_OPERATOR` (same rule as
+`canViewHowTo` in `src/lib/how-to-nav.ts`). `VIEWER` receives `403`; an
+unauthenticated request receives `401`.
+
+**Request:** `GET /api/how-to-manual`
+
+**Response** (200):
+
+```json
+{
+  "success": true,
+  "data": {
+    "markdown": "# How-To Manual
+..."
+  }
+}
+```
+
+**Headers:** `Cache-Control: private, max-age=300`.

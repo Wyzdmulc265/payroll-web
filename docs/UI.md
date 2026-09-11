@@ -45,16 +45,17 @@ Single source of nav. Renders **two** presentations of the same links:
 therefore do not need their own layout wrapper.
 
 **Role-aware variant for SUPER_ADMIN**: when `useCurrentUser().role === 'SUPER_ADMIN'`,
-the nav is replaced with a focused 4-tab experience: **Home · Business
-Management · Settings · Audit Logs**. The SUPER_ADMIN tab list does not
-pass through the `requiresBusiness` filter (SUPER_ADMIN has no
-`businessId` by design). All other roles see the same permission-filtered
-nav as before.
+the nav is replaced with a focused 5-tab experience: **Home · Business
+Management · Settings · Audit Logs · Know Your App**. The SUPER_ADMIN tab
+list does not pass through the `requiresBusiness` filter (SUPER_ADMIN has
+no `businessId` by design). All other roles see the same
+permission-filtered nav; the **Know Your App** tab is additionally gated by
+`canViewHowTo(role)` so it stays hidden for `VIEWER`.
 
 **Active state** is derived from `usePathname()`:
 `pathname === href || pathname.startsWith(href + '/')`. Icons come
 from `lucide-react` (TrendingUp, Users, Calculator, FileText,
-BarChart3, Settings, Building2, UserCog, ScrollText).
+BarChart3, Settings, Building2, UserCog, ScrollText, BookOpen, ListTree).
 
 **Both variants are `print:hidden`.**
 
@@ -366,6 +367,22 @@ or assigned via this page).
 `DELETE /api/users/[id]`.
 
 ---
+### 3.13 `/know-your-app` — `src/app/know-your-app/page.tsx`
+
+**Who sees it:** `SUPER_ADMIN`, `ADMIN`, and `PAYROLL_OPERATOR` (hidden from
+`VIEWER`). The link is a standalone tab in `MainNav` (desktop sidebar and
+mobile bottom bar) and is **not** nested under Settings.
+
+**What it shows:** An in-app, collapsible how-to guide (`docs/how-to-manual.md`)
+covering Dashboard, Employees, Payroll, Payslips, Reports, Settings, and FBT, with
+**Jump To** (`JumpToButton`), **Download Manual**, and **Print / Save as PDF** actions.
+
+**Key components:** `src/components/HowToGuide.tsx` (fetches and renders the guide as
+collapsible sections), `src/components/JumpToButton.tsx` (dropdown navigation), and
+`src/lib/how-to-nav.ts` (`canViewHowTo` / `getVisibleHowToItems` role filtering).
+
+**Fetcher:** `GET /api/how-to-manual`.
+
 
 ## 4. State Management Cheat-Sheet
 
