@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-const ADMIN_EMAIL = 'admin@testbiz.local';
+const ADMIN_EMAIL = 'admin-a@testbiz.local';
 const ADMIN_PASSWORD = 'AdminTest123';
-const VIEWER_EMAIL = 'viewer@testbiz.local';
-const VIEWER_PASSWORD = 'ViewerTest123';
+const OPERATOR_EMAIL = 'operator-a@testbiz.local';
+const OPERATOR_PASSWORD = 'OperatorTest123';
 
 test.describe('auth smoke', () => {
   test.beforeEach(async ({ page }) => {
@@ -30,12 +30,18 @@ test.describe('auth smoke', () => {
     await expect(page.getByText(/invalid email or password/i)).toBeVisible();
   });
 
-  test('valid admin login redirects to dashboard and shows email in nav', async ({ page }) => {
+  test('valid admin login redirects to dashboard and loads the nav', async ({ page }) => {
     await page.goto('/login');
     await page.getByLabel('Email').fill(ADMIN_EMAIL);
     await page.getByLabel('Password').fill(ADMIN_PASSWORD);
     await page.getByRole('button', { name: /sign in/i }).click();
     await expect(page).toHaveURL(/\/dashboard/);
+    // Regression guard: the nav must actually render its links and the user
+    // footer after a client-side router.push — not an empty list or a stuck
+    // skeleton. Previously the server-supplied initialUser was never refreshed
+    // on client navigation, so the nav stayed blank.
+    await expect(page.getByRole('link', { name: /dashboard/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /payroll/i })).toBeVisible();
     await expect(page.getByText(ADMIN_EMAIL)).toBeVisible();
   });
 
@@ -50,10 +56,10 @@ test.describe('auth smoke', () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test('viewer does not see Settings nav item', async ({ page }) => {
+  test('operator does not see Settings nav item', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Email').fill(VIEWER_EMAIL);
-    await page.getByLabel('Password').fill(VIEWER_PASSWORD);
+    await page.getByLabel('Email').fill(OPERATOR_EMAIL);
+    await page.getByLabel('Password').fill(OPERATOR_PASSWORD);
     await page.getByRole('button', { name: /sign in/i }).click();
     await expect(page).toHaveURL(/\/dashboard/);
 

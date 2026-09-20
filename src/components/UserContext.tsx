@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'PAYROLL_OPERATOR' | 'VIEWER';
 
@@ -14,14 +15,27 @@ export interface CurrentUser {
 const UserContext = createContext<CurrentUser | null | undefined>(undefined);
 
 /**
+ * Auth surfaces that render outside MainNav. On these there is nothing to fetch:
+ * the server-rendered `initialUser` is already `null` and the nav is hidden.
+ */
+const isAuthPath = (pathname: string): boolean =>
+  pathname === '/login' ||
+  pathname === '/forgot-password' ||
+  pathname.startsWith('/reset-password/');
+
+/**
  * Provides the current user to all children via useCurrentUser().
- *
- * When `initialUser` is supplied by the server-rendered layout the nav
- * renders immediately with no client-side fetch.  Otherwise a one-shot
- * /api/auth/me call fires on mount.
  *
  * Tri-state: `undefined` while loading, `null` when not authenticated,
  * `CurrentUser` when authenticated.
+ *
+ * The server supplies `initialUser` on the initial (direct) page load. It is
+ * NOT re-supplied on a client-side `router.push` — the shared root layout is
+ * not re-rendered when navigating between routes that share it (e.g. signing
+ * in on /login then router.push('/dashboard')). So whenever we land on a
+ * protected page while the user is still unknown, we resolve it from the
+ * session cookie via /api/auth/me. That makes the nav self-heal after login
+ * no matter how the navigation happened.
  */
 export function UserProvider({
   children,
@@ -30,28 +44,33 @@ export function UserProvider({
   children: ReactNode;
   initialUser?: CurrentUser | null;
 }) {
-  const [user, setUser] = useState<CurrentUser | null | undefined>(
-    initialUser ?? undefined,
-  );
+  const pathname = usePathname();
+  const [user, setUser] = useState<CurrentUser | null | undefined>(initialUser);
 
+  const onProtectedPage = !isAuthPath(pathname);
+
+  // A client-side router.push after login does not re-run the root layout, so
+  // `initialUser` below stays stale. Re-resolve from the cookie on any
+  // protected page where the user is not yet known.
   useEffect(() => {
-    // If the server already gave us the user, skip the fetch.
-    if (initialUser !== undefined) return;
+    if (!onProtectedPage || user) return;
 
+    let active = true;
     fetch('/api/auth/me', { credentials: 'same-origin' })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
-        if (json?.success && json?.data) {
-          setUser(json.data as CurrentUser);
-        } else {
-          setUser(null);
-        }
+        if (!active) return;
+        setUser(json?.success && json?.data ? (json.data as CurrentUser) : null);
       })
       .catch(() => {
         // Network error — mark as unauthenticated; proxy will redirect if needed.
-        setUser(null);
+        if (active) setUser(null);
       });
-  }, [initialUser]);
+
+    return () => {
+      active = false;
+    };
+  }, [onProtectedPage, user]);
 
   return <UserContext.Provider value={user}>{children}</UserContext.Provider>;
 }
