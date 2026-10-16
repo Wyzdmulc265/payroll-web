@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { escapeCsvCell, csvField } from '@/lib/csv';
+import { escapeHtml } from '@/lib/html';
+
+describe('escapeHtml', () => {
+  it('escapes HTML text content', () => {
+    expect(escapeHtml(`<img src=x onerror="alert('x')">`)).toBe('&lt;img src=x onerror=&quot;alert(&#39;x&#39;)&quot;&gt;');
+  });
+
+  it('returns an empty string for nullish values', () => {
+    expect(escapeHtml(null)).toBe('');
+    expect(escapeHtml(undefined)).toBe('');
+  });
+});
 
 describe('escapeCsvCell', () => {
   it('returns empty string for null/undefined', () => {

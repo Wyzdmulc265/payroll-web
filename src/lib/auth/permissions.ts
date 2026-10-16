@@ -8,6 +8,7 @@ export const Permission = {
   READ_SETTINGS: 'read:settings',
   MANAGE_SETTINGS: 'manage:settings',
   READ_REPORTS: 'read:reports',
+  EXPORT_BANK_PAYMENTS: 'export:bank-payments',
   READ_AUDIT_LOGS: 'read:audit-logs',
   READ_USERS: 'read:users',
   MANAGE_USERS: 'manage:users',
@@ -26,11 +27,11 @@ export const rolePermissions: Record<Role, readonly Permission[]> = {
   ADMIN: [
     Permission.READ_PAYROLL, Permission.RUN_PAYROLL, Permission.READ_EMPLOYEES,
     Permission.MANAGE_EMPLOYEES, Permission.READ_SETTINGS, Permission.MANAGE_SETTINGS,
-    Permission.READ_REPORTS, Permission.READ_AUDIT_LOGS, Permission.READ_USERS, Permission.MANAGE_USERS,
+    Permission.READ_REPORTS, Permission.EXPORT_BANK_PAYMENTS, Permission.READ_AUDIT_LOGS, Permission.READ_USERS, Permission.MANAGE_USERS,
   ],
   PAYROLL_OPERATOR: [
     Permission.READ_PAYROLL, Permission.RUN_PAYROLL, Permission.READ_EMPLOYEES,
-    Permission.READ_REPORTS,
+    Permission.READ_REPORTS, Permission.EXPORT_BANK_PAYMENTS,
   ],
   VIEWER: [Permission.READ_PAYROLL, Permission.READ_EMPLOYEES, Permission.READ_REPORTS],
 };

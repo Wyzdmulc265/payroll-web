@@ -120,7 +120,8 @@ Create a user in the actor's business.
 { "email": "ops@example.com", "password": "StrongPass1", "role": "PAYROLL_OPERATOR" }
 ```
 
-- `role` is restricted to `ADMIN | PAYROLL_OPERATOR | VIEWER`; `SUPER_ADMIN` is
+- `role` is restricted to `PAYROLL_OPERATOR | VIEWER`; tenant ADMIN creation is
+  reserved for SUPER_ADMIN business provisioning. `ADMIN` and `SUPER_ADMIN` are
   rejected (`400`) to prevent privilege escalation.
 - Password follows the shared policy (min 8 chars, one uppercase, one number).
 - Password is hashed with `bcryptjs` (10 rounds); `businessId` is taken from the
@@ -149,6 +150,8 @@ Update a user in the actor's business.
 - Setting `role` to `SUPER_ADMIN` is rejected (`403`/`400`).
 - An actor cannot change their own role or deactivate themselves (`403`).
 - `password`, when provided, is re-hashed; otherwise the existing hash is kept.
+- Tenant ADMINs cannot manage other ADMIN accounts. Password changes and
+  deactivation revoke the target's active sessions in the same transaction.
 - `400` on empty body or duplicate email **within the same business**;
   requires `MANAGE_USERS`.
 - Emits `USER_UPDATED` audit event (sanitized old/new values, no hashes).
@@ -211,7 +214,7 @@ Create one employee. Zod schema in source (lines 5–24 of
 - `employmentDate` is coerced via `z.coerce.date()`.
 - `basicSalary` is `z.number().positive()`.
 - On duplicate `employeeId`: `400 { success: false, error: "Employee ID already exists" }`.
-- On duplicate `nationalId` within the same business: `400 { success: false, error: "An employee with this National ID already exists" }`. Detection uses a SHA-256 hash; the raw value is encrypted at rest.
+- On duplicate `nationalId` within the same business: `400 { success: false, error: "An employee with this National ID already exists" }`. Detection uses a keyed HMAC with legacy SHA-256 lookup compatibility; the raw value is encrypted at rest.
 - Emits `AuditLog` with `action: 'EMPLOYEE_CREATED'`, `user` set to the
   authenticated user's email.
 
@@ -222,6 +225,8 @@ Create one employee. Zod schema in source (lines 5–24 of
 Fetch one employee, including the last 12 `PayrollRecord`s.
 
 **Response `200`**: `{ success: true, data: { ...employee, payrollHistory: [...] } }`.
+National ID, bank details, tax number, and notes are redacted for VIEWER users;
+ADMIN and PAYROLL_OPERATOR retain operational access to these fields.
 
 ### `PUT /api/employees/:id`
 
@@ -527,7 +532,8 @@ CSV/Excel export.
 - `Department Payroll` — one row per employee but with department as
   the first column and the list grouped by department. Includes `FBT`.
 - `Bank Payment Schedule` — only rows where `bankName` and
-  `accountNumber` are set; for uploading to a banking portal.
+  `accountNumber` are set; for uploading to a banking portal. Requires the
+  additional `EXPORT_BANK_PAYMENTS` permission (ADMIN and PAYROLL_OPERATOR).
 - `Employee Earnings History` — historical periods up to and including
   the requested one; requires `employeeId`. Includes `Fringe Benefit Base`
   and `FBT`.

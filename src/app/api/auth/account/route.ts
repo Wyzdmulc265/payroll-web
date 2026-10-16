@@ -123,13 +123,16 @@ export async function PATCH(request: NextRequest) {
         }, tx);
       }
 
+      if (passwordChanged) {
+        await invalidateAllSessionsForUser(session.user.id, tx);
+      }
+
       return result;
     }, { timeout: 15000, maxWait: 10000 });
 
     const response = NextResponse.json({ success: true, data: updated });
 
     if (passwordChanged) {
-      await invalidateAllSessionsForUser(session.user.id);
       clearSessionCookie(response);
     }
 

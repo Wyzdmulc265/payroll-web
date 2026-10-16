@@ -4,11 +4,8 @@ import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent, redactEmployeeForAudit } from '@/lib/audit';
 import { decryptPii } from '@/lib/encryption';
-import { createHash } from 'node:crypto';
-
-function hashNationalId(nationalId: string): string {
-  return createHash('sha256').update(nationalId.trim().toLowerCase()).digest('hex');
-}
+import { employeeDtoForRole } from '@/lib/employee-dto';
+import { hashNationalId, nationalIdHashCandidates } from '@/lib/national-id';
 
 const updateEmployeeSchema = z.object({
   firstName: z.string().min(1).optional(),
@@ -61,7 +58,10 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: decryptPii(employee) });
+    return NextResponse.json({
+      success: true,
+      data: employeeDtoForRole(decryptPii(employee), session.user.role),
+    });
   } catch (error) {
     console.error('Error fetching employee:', error);
     return NextResponse.json(
@@ -95,9 +95,8 @@ export async function PUT(
     }
 
     if (validatedData.nationalId) {
-      const nationalIdHash = hashNationalId(validatedData.nationalId);
       const duplicate = await prisma.employee.findFirst({
-        where: { businessId, nationalIdHash, NOT: { id } },
+        where: { businessId, nationalIdHash: { in: nationalIdHashCandidates(validatedData.nationalId) }, NOT: { id } },
       });
       if (duplicate) {
         return NextResponse.json(

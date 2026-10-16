@@ -151,6 +151,21 @@ describe('business admin management', () => {
     expect(json.data.email).toBe('updated-admin@test.com');
   }, 30000);
 
+  it('PUT password reset revokes all sessions for the admin', async () => {
+    const admin = await prisma.user.findFirstOrThrow({ where: { businessId: bizA.id } });
+    await loginAs(admin.id);
+
+    const res = await putAdmin(
+      makeRequest(`http://localhost/api/admin/businesses/${bizA.id}/admins/${admin.id}`, sessionCookie(tokenSuper), 'PUT', {
+        password: 'ResetAdmin1',
+      }),
+      await userContext({ id: bizA.id, userId: admin.id })
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.session.count({ where: { userId: admin.id } })).toBe(0);
+  }, 30000);
+
   it('DELETE deactivates an admin (soft)', async () => {
     const admin = await prisma.user.findFirstOrThrow({ where: { businessId: bizA.id } });
     const res = await deleteAdmin(
@@ -160,6 +175,7 @@ describe('business admin management', () => {
     expect(res.status).toBe(200);
     const refreshed = await prisma.user.findUnique({ where: { id: admin.id } });
     expect(refreshed?.status).toBe('INACTIVE');
+    expect(await prisma.session.count({ where: { userId: admin.id } })).toBe(0);
 
     const audit = await prisma.auditLog.findFirst({
       where: { businessId: bizA.id, action: 'USER_DEACTIVATED' },

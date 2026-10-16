@@ -6,7 +6,9 @@ import {
   Loader2, Table, Download as DownloadIcon, Info, AlertCircle
 } from 'lucide-react';
 import { escapeCsvCell, csvField } from '@/lib/csv';
+import { escapeHtml } from '@/lib/html';
 import { PeriodPicker } from '@/components/PeriodPicker';
+import { useCurrentUser } from '@/components/UserContext';
 
 const REPORT_TYPES = [
   'Payroll Register',
@@ -29,6 +31,10 @@ interface ReportData {
 }
 
 export default function ReportsPage() {
+  const currentUser = useCurrentUser();
+  const visibleReportTypes = currentUser?.role === 'VIEWER'
+    ? REPORT_TYPES.filter((type) => type !== 'Bank Payment Schedule')
+    : REPORT_TYPES;
   const [reportType, setReportType] = useState<ReportType>('Payroll Register');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [departments, setDepartments] = useState<string[]>([]);
@@ -122,10 +128,10 @@ export default function ReportsPage() {
         <body>
           <table border="1">
             <thead>
-              <tr>${reportData.headers.map(h => `<th>${escapeCsvCell(h)}</th>`).join('')}</tr>
+              <tr>${reportData.headers.map(h => `<th>${escapeHtml(escapeCsvCell(h))}</th>`).join('')}</tr>
             </thead>
             <tbody>
-              ${reportData.rows.map(r => `<tr>${r.map(c => `<td>${escapeCsvCell(c)}</td>`).join('')}</tr>`).join('')}
+              ${reportData.rows.map(r => `<tr>${r.map(c => `<td>${escapeHtml(escapeCsvCell(c))}</td>`).join('')}</tr>`).join('')}
             </tbody>
           </table>
         </body>
@@ -165,7 +171,7 @@ export default function ReportsPage() {
                 onChange={(e) => setReportType(e.target.value as ReportType)}
                 className="input"
               >
-                {REPORT_TYPES.map(type => (
+                {visibleReportTypes.map(type => (
                   <option key={type} value={type}>{type}</option>
                 ))}
               </select>

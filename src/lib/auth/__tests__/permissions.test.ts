@@ -16,6 +16,12 @@ describe('permissions', () => {
     expect(rolePermissions.ADMIN).toContain(Permission.READ_AUDIT_LOGS);
   });
 
+  it('allows bank payment exports only for ADMIN and PAYROLL_OPERATOR', () => {
+    expect(hasPermission('ADMIN', Permission.EXPORT_BANK_PAYMENTS)).toBe(true);
+    expect(hasPermission('PAYROLL_OPERATOR', Permission.EXPORT_BANK_PAYMENTS)).toBe(true);
+    expect(hasPermission('VIEWER', Permission.EXPORT_BANK_PAYMENTS)).toBe(false);
+  });
+
   it('hasPermission resolves correctly for each role/permission pair', () => {
     for (const role of roles) {
       for (const perm of Object.values(Permission)) {

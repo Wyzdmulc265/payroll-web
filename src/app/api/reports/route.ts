@@ -14,6 +14,10 @@ export async function GET(request: NextRequest) {
     if (!session.user.businessId) return unauthorized();
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'Payroll Register';
+    if (type === 'Bank Payment Schedule') {
+      const bankExportDenied = requirePermission(session.user, Permission.EXPORT_BANK_PAYMENTS);
+      if (bankExportDenied) return bankExportDenied;
+    }
     const period = searchParams.get('period');
     const department = searchParams.get('department');
 

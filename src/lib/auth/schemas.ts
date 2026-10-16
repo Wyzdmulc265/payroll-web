@@ -32,12 +32,8 @@ export const userSchema = z.object({
   businessId: z.string().nullable(),
 });
 
-// Roles an ADMIN/SUPER_ADMIN may assign to managed users. SUPER_ADMIN is
-// deliberately excluded so no tenant-scoped user can create or be granted
-// SUPER_ADMIN — the only path to SUPER_ADMIN is the bootstrap seed. This is
-// the primary privilege-escalation guard for user management; routes also
-// re-check the parsed role as defense-in-depth.
-export const userRoles = ['ADMIN', 'PAYROLL_OPERATOR', 'VIEWER'] as const;
+// Tenant ADMINs may only create and assign operational or read-only roles.
+export const userRoles = ['PAYROLL_OPERATOR', 'VIEWER'] as const;
 
 export const createUserSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),

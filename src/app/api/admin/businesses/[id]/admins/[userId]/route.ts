@@ -8,6 +8,7 @@ import {
   Permission,
   hashPassword,
   passwordSchema,
+  invalidateAllSessionsForUser,
 } from '@/lib/auth';
 import { getRequestIp, logAuditEvent, AuditAction, AuditEntity } from '@/lib/audit';
 import { safeUserSelect } from '@/lib/auth/user-management';
@@ -122,6 +123,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         ipAddress: getRequestIp(request),
       }, tx);
 
+      if (validated.password || validated.status === 'INACTIVE') {
+        await invalidateAllSessionsForUser(userId, tx);
+      }
+
       return result;
     }, { timeout: 15000, maxWait: 10000 });
 
@@ -197,6 +202,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
         newData: sanitizeAdmin(result),
         ipAddress: getRequestIp(request),
       }, tx);
+
+      await invalidateAllSessionsForUser(userId, tx);
 
       return result;
     }, { timeout: 15000, maxWait: 10000 });

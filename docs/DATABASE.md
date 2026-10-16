@@ -99,8 +99,8 @@ The master record. **Soft-deletable** (`isActive`). All historical
 | `businessId` | `String?` FK→Business | — | Tenant ownership; nullable while legacy data is being migrated. |
 | `firstName`, `lastName` | `String` | — | |
 | `fullName` | `String?` | — | Denormalised `<first> <last>`; recomputed in API on name change. |
-| `nationalId` | `String?` | — | Malawi National ID, optional. Encrypted at rest via AES-256-GCM. Duplicate detection uses `nationalIdHash` (SHA-256) per business. |
-| `nationalIdHash` | `String?` | — | SHA-256 hash of `nationalId` for per-business duplicate detection. Populated by the API layer on create/update. |
+| `nationalId` | `String?` | — | Malawi National ID, optional. Encrypted at rest via AES-256-GCM. Duplicate detection uses a keyed HMAC in `nationalIdHash` per business. |
+| `nationalIdHash` | `String?` | — | HMAC-SHA-256 of normalized `nationalId`, keyed from `ENCRYPTION_KEY`, for per-business duplicate detection. Legacy SHA-256 hashes remain readable during gradual rehash-on-update. |
 | `employmentStatus` | `String` | `"Active"` | Loose string (`Active` / `Inactive`); the soft-delete target. |
 | `department` | `String` | — | Indexed. **Currently the Add-Employee modal hard-codes 5 values**; see IMPROVEMENTS. |
 | `position` | `String` | — | |
@@ -125,7 +125,7 @@ The master record. **Soft-deletable** (`isActive`). All historical
 - `payrollRecords PayrollRecord[]` — `onDelete: Cascade` on the child.
 - `auditLogs AuditLog[]` — `onDelete: SetNull` on the child.
 
-**Indexes**: `department`, `employmentStatus`, `isActive`, `(businessId, isActive)`, `nationalIdHash`.
+**Indexes**: `department`, `employmentStatus`, `isActive`, `(businessId, isActive)`, `(businessId, nationalIdHash)`.
 
 ---
 

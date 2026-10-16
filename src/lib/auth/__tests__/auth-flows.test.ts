@@ -200,6 +200,31 @@ describe('auth route flows', () => {
     expect(res.status).toBe(400);
   }, 30000);
 
+  it('allows a password-reset token to be redeemed only once under concurrent requests', async () => {
+    const user = await prisma.user.findFirstOrThrow({ where: { email } });
+    const rawToken = `concurrent-${Date.now()}`;
+    await prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        tokenHash: createHash('sha256').update(rawToken).digest('hex'),
+        expiresAt: new Date(Date.now() + 60_000),
+        status: 'PENDING',
+      },
+    });
+
+    const responses = await Promise.all([
+      postReset(makeRequest('http://localhost/api/auth/reset-password', { body: { token: rawToken, newPassword: 'FirstPass123' } })),
+      postReset(makeRequest('http://localhost/api/auth/reset-password', { body: { token: rawToken, newPassword: 'SecondPass123' } })),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 400]);
+    const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(
+      await bcrypt.compare('FirstPass123', updated.passwordHash)
+      || await bcrypt.compare('SecondPass123', updated.passwordHash),
+    ).toBe(true);
+  }, 60000);
+
   it('rejects an invalid (non-existent) password-reset token with 400', async () => {
     const res = await postReset(
       makeRequest('http://localhost/api/auth/reset-password', {

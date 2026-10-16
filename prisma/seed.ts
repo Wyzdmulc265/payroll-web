@@ -2,8 +2,8 @@ import 'dotenv/config';
 import { PrismaClient } from './generated/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
-import { createHash } from 'node:crypto';
 import { encryptPii } from '../src/lib/encryption';
+import { hashNationalId } from '../src/lib/national-id';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -13,10 +13,6 @@ if (!connectionString) {
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString }),
 });
-
-function hashNationalId(nationalId: string): string {
-  return createHash('sha256').update(nationalId.trim().toLowerCase()).digest('hex');
-}
 
 async function main() {
   console.log('🌱 Seeding database...');

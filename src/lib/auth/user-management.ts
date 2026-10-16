@@ -24,8 +24,8 @@ export type SafeUser = {
   updatedAt: Date;
 };
 
-/** Roles a tenant-scoped user (ADMIN/SUPER_ADMIN) is allowed to assign. */
-export const manageableRoles: readonly Role[] = ['ADMIN', 'PAYROLL_OPERATOR', 'VIEWER'];
+/** Roles a tenant ADMIN may assign to another business user. */
+export const manageableRoles: readonly Role[] = ['PAYROLL_OPERATOR', 'VIEWER'];
 
 export function isManageableRole(role: Role): boolean {
   return (manageableRoles as readonly Role[]).includes(role);

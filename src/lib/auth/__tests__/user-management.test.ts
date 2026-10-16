@@ -99,6 +99,14 @@ describe('user management', () => {
     expect(res.status).toBe(403);
   });
 
+  it('does not allow an ADMIN to create another ADMIN', async () => {
+    const res = await createUser(makeRequest('http://localhost/api/users', sessionCookie(adminToken), {
+      email: 'second-admin@test.com', password: 'NewPass123', role: 'ADMIN' as never,
+    }));
+    expect(res.status).toBe(400);
+    expect(await prisma.user.findFirst({ where: { email: 'second-admin@test.com' } })).toBeNull();
+  });
+
   it('returns 403 for SUPER_ADMIN without an assigned business', async () => {
     const sToken = 'super-token-' + Date.now();
     await createSession(superUser.id, sToken);
@@ -179,22 +187,45 @@ describe('user management', () => {
     expect(res.status).toBe(404);
   });
 
-  it('updates a user role, email, and status', async () => {
+  it('updates a managed user role, email, and status', async () => {
     const hash = await bcrypt.hash('Pass123', 10);
     const target = await prisma.user.create({
       data: { email: 'target@test.com', passwordHash: hash, role: 'VIEWER', status: 'ACTIVE', businessId: businessA.id },
     });
     const res = await updateUser(makeRequest('http://localhost/api/users/x', sessionCookie(adminToken), {
-      role: 'ADMIN', status: 'INACTIVE', email: 'target2@test.com',
+      role: 'PAYROLL_OPERATOR', status: 'INACTIVE', email: 'target2@test.com',
     }), { params: Promise.resolve({ id: target.id }) });
     const json = await res.json();
     expect(res.status).toBe(200);
-    expect(json.data.role).toBe('ADMIN');
+    expect(json.data.role).toBe('PAYROLL_OPERATOR');
     expect(json.data.status).toBe('INACTIVE');
     expect(json.data.email).toBe('target2@test.com');
 
     const audit = await prisma.auditLog.findFirst({ where: { action: 'USER_UPDATED', entityId: target.id } });
     expect(audit).not.toBeNull();
+  });
+
+  it('does not allow an ADMIN to promote another user to ADMIN', async () => {
+    const hash = await bcrypt.hash('Pass123', 10);
+    const target = await prisma.user.create({
+      data: { email: 'target@test.com', passwordHash: hash, role: 'VIEWER', status: 'ACTIVE', businessId: businessA.id },
+    });
+    const res = await updateUser(makeRequest('http://localhost/api/users/x', sessionCookie(adminToken), {
+      role: 'ADMIN' as never,
+    }), { params: Promise.resolve({ id: target.id }) });
+    expect(res.status).toBe(400);
+    expect((await prisma.user.findUnique({ where: { id: target.id } }))?.role).toBe('VIEWER');
+  });
+
+  it('does not allow an ADMIN to mutate a different ADMIN account', async () => {
+    const hash = await bcrypt.hash('Pass123', 10);
+    const target = await prisma.user.create({
+      data: { email: 'second-admin@test.com', passwordHash: hash, role: 'ADMIN', status: 'ACTIVE', businessId: businessA.id },
+    });
+    const res = await updateUser(makeRequest('http://localhost/api/users/x', sessionCookie(adminToken), {
+      email: 'changed@test.com',
+    }), { params: Promise.resolve({ id: target.id }) });
+    expect(res.status).toBe(403);
   });
 
   it('rejects setting a target role to SUPER_ADMIN on update', async () => {
@@ -222,9 +253,26 @@ describe('user management', () => {
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.data.status).toBe('INACTIVE');
+    expect(await prisma.session.count({ where: { userId: target.id } })).toBe(0);
 
     const audit = await prisma.auditLog.findFirst({ where: { action: 'USER_DEACTIVATED', entityId: target.id } });
     expect(audit).not.toBeNull();
+  });
+
+  it('invalidates the target user sessions when an ADMIN resets their password', async () => {
+    const hash = await bcrypt.hash('Pass123', 10);
+    const target = await prisma.user.create({
+      data: { email: 'operator@test.com', passwordHash: hash, role: 'PAYROLL_OPERATOR', status: 'ACTIVE', businessId: businessA.id },
+    });
+    await createSession(target.id, `target-session-${Date.now()}`);
+
+    const res = await updateUser(makeRequest('http://localhost/api/users/x', sessionCookie(adminToken), {
+      password: 'ChangedPass123',
+    }), { params: Promise.resolve({ id: target.id }) });
+
+    expect(res.status).toBe(200);
+    expect(await prisma.session.count({ where: { userId: target.id } })).toBe(0);
+    expect(await bcrypt.compare('ChangedPass123', (await prisma.user.findUniqueOrThrow({ where: { id: target.id } })).passwordHash)).toBe(true);
   });
 
   it('prevents an admin from deactivating their own account', async () => {

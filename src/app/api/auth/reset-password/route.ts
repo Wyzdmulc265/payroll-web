@@ -93,9 +93,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid or expired reset token' }, { status: 400 });
     }
 
-    await prisma.$transaction(async (transaction) => {
-      await transaction.user.update({ where: { id: reset.userId }, data: { passwordHash: await hashPassword(newPassword) } });
-      await transaction.passwordReset.update({ where: { id: reset.id }, data: { status: 'USED' } });
+    const passwordHash = await hashPassword(newPassword);
+    const consumed = await prisma.$transaction(async (transaction) => {
+      const claim = await transaction.passwordReset.updateMany({
+        where: { id: reset.id, status: 'PENDING', expiresAt: { gt: new Date() } },
+        data: { status: 'USED' },
+      });
+      if (claim.count !== 1) return false;
+
+      await transaction.user.update({ where: { id: reset.userId }, data: { passwordHash } });
       // Invalidate all sessions atomically with the password change so that a
       // DB error rolling back the transaction also rolls back the session wipe
       // (and vice-versa). This closes the window where a password is rotated
@@ -112,7 +118,12 @@ export async function POST(request: NextRequest) {
         description: 'Password changed through reset flow',
         ipAddress: getRequestIp(request),
       }, transaction);
+      return true;
     }, { timeout: 15000, maxWait: 10000 });
+
+    if (!consumed) {
+      return NextResponse.json({ success: false, error: 'Invalid or expired reset token' }, { status: 400 });
+    }
 
     // Fire-and-forget: notify the user that their password was changed.
     // This is deliberately outside the transaction — a mail failure must

@@ -4,11 +4,8 @@ import { z } from 'zod';
 import { getCurrentUser, unauthorized, requirePermission, Permission } from '@/lib/auth';
 import { getRequestIp, logAuditEvent, redactEmployeeForAudit } from '@/lib/audit';
 import { encryptPii, decryptPiiArray } from '@/lib/encryption';
-import { createHash } from 'node:crypto';
-
-function hashNationalId(nationalId: string): string {
-  return createHash('sha256').update(nationalId.trim().toLowerCase()).digest('hex');
-}
+import { employeeDtoForRole } from '@/lib/employee-dto';
+import { hashNationalId, nationalIdHashCandidates } from '@/lib/national-id';
 
 const employeeSchema = z.object({
   employeeId: z.string().regex(/^EMP\d{3}$/, 'Employee ID must be in format EMPXXX'),
@@ -82,10 +79,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: decryptPiiArray(employees).map((e) => ({
-        ...e,
-        basicSalary: Number(e.basicSalary),
-        allowances: Number(e.allowances),
+      data: decryptPiiArray(employees).map((employee) => ({
+        ...employeeDtoForRole(employee, session.user.role),
+        basicSalary: Number(employee.basicSalary),
+        allowances: Number(employee.allowances),
       })),
       pagination: {
         page,
@@ -130,9 +127,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (validatedData.nationalId) {
-      const nationalIdHash = hashNationalId(validatedData.nationalId);
       const duplicateNationalId = await prisma.employee.findFirst({
-        where: { businessId, nationalIdHash },
+        where: { businessId, nationalIdHash: { in: nationalIdHashCandidates(validatedData.nationalId) } },
       });
       if (duplicateNationalId) {
         return NextResponse.json(

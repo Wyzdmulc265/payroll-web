@@ -9,6 +9,8 @@ import {
   Permission,
   hashPassword,
   updateUserSchema,
+  invalidateAllSessionsForUser,
+  clearSessionCookie,
 } from '@/lib/auth';
 import { getRequestIp, logAuditEvent } from '@/lib/audit';
 import { safeUserSelect, isManageableRole, isSelfMutation } from '@/lib/auth/user-management';
@@ -96,6 +98,10 @@ export async function PUT(
       );
     }
 
+    if (existing.role === 'ADMIN' && !isSelfMutation(session.user.id, id)) {
+      return forbidden();
+    }
+
     // Guard rails for self-mutation: an admin may update their own email and
     // password, but cannot change their own role or deactivate themselves
     // (which would lock them out of the tenant).
@@ -151,10 +157,18 @@ export async function PUT(
         ipAddress: getRequestIp(request),
       }, tx);
 
+      if (validatedData.password || validatedData.status === 'INACTIVE') {
+        await invalidateAllSessionsForUser(id, tx);
+      }
+
       return result;
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    const response = NextResponse.json({ success: true, data: updated });
+    if (validatedData.password && session.user.id === id) {
+      clearSessionCookie(response);
+    }
+    return response;
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -193,6 +207,10 @@ export async function DELETE(
       );
     }
 
+    if (existing.role === 'ADMIN') {
+      return forbidden();
+    }
+
     if (isSelfMutation(session.user.id, id)) {
       return NextResponse.json(
         { success: false, error: 'You cannot deactivate your own account' },
@@ -216,6 +234,8 @@ export async function DELETE(
         newData: sanitizeUser(result),
         ipAddress: getRequestIp(request),
       }, tx);
+
+      await invalidateAllSessionsForUser(id, tx);
 
       return result;
     });
