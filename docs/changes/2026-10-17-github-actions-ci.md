@@ -15,13 +15,13 @@ The `main` branch had no automated gate for failing tests, lint or TypeScript er
 
 - Pull requests and pushes targeting `main` run lint, PostgreSQL-backed tests, TypeScript checks, a production build, and `npm audit`.
 - CodeQL scans JavaScript and TypeScript.
-- The test job provisions an isolated PostgreSQL service and applies migrations before tests.
+- Pull requests use the isolated PostgreSQL service for tests. Trusted pushes to `main` and manual runs on `main` may use the `DATABASE_URL_TEST` Actions secret instead.
 
 ## 3. How it works
 
 - `.github/workflows/ci.yml` defines the workflow jobs, PostgreSQL service, least-privilege permissions, and per-branch concurrency.
-- Integration tests use the ephemeral `payroll_test` database through `DATABASE_URL_TEST`.
-- The workflow requires no application secrets; CI-only encryption configuration is non-production data.
+- Pull-request code never receives the Neon credential; its database-backed tests use a disposable PostgreSQL service.
+- Trusted `main` runs use `DATABASE_URL_TEST` when configured and otherwise fall back to the disposable service. The shared test job is serialized because integration tests perform destructive cleanup.
 
 ## 4. What got better
 
@@ -40,5 +40,5 @@ The `main` branch had no automated gate for failing tests, lint or TypeScript er
 
 ## 7. Follow-ups (optional)
 
-- Require the workflow's quality and CodeQL checks on protected `main` and disallow force pushes.
+- Use only a dedicated, disposable Neon test database for the `DATABASE_URL_TEST` Actions secret; never configure production data there.
 - Resolve the npm audit findings and verify the complete pipeline.
