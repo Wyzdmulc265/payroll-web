@@ -49,8 +49,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL_TEST || 'postgresql://postgres:postgres@localhost:5432/payroll_test' }}
-      DATABASE_URL_TEST: ${{ secrets.DATABASE_URL_TEST || 'postgresql://postgres:postgres@localhost:5432/payroll_test' }}
+      DATABASE_URL: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && secrets.DATABASE_URL_TEST || 'postgresql://postgres:postgres@localhost:5432/payroll_test' }}
+      DATABASE_URL_TEST: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && secrets.DATABASE_URL_TEST || 'postgresql://postgres:postgres@localhost:5432/payroll_test' }}
     concurrency:
       group: database-tests-${{ github.repository }}
       cancel-in-progress: false
